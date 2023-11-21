@@ -25,6 +25,12 @@ addActionHandler('openChat', (global, actions, payload): ActionReturnType => {
     tabId = getCurrentTabId(),
   } = payload;
 
+  window.parent.postMessage({
+    type: 'chatChange',
+    url: id // or location.href if you need the full URL
+  }, 'https://develop.nreach.io');
+
+
   const currentMessageList = selectCurrentMessageList(global, tabId);
 
   const tabState = selectTabState(global, tabId);

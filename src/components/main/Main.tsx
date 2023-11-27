@@ -284,7 +284,8 @@ const Main: FC<OwnProps & StateProps> = ({
   // Example in a React component or similar central script
   useEffect(() => {
     function receiveMessage(event: MessageEvent) {
-      const domains = ['http://localhost:3000', 'https://develop.nreach.io', 'https://app.nreach.io'];
+      // eslint-disable-next-line max-len
+      const domains = ['http://localhost:3000', 'https://develop.nreach.io', 'https://app.nreach.io', 'https://develop.d25qb5qv8apj8m.amplifyapp.com', 'https://main.deq09zb7fu5m5.amplifyapp.com'];
       // Check the origin for security reasons
       if (!domains.includes(event.origin)) {
         return;

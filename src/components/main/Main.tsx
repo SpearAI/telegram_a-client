@@ -281,6 +281,42 @@ const Main: FC<OwnProps & StateProps> = ({
   // eslint-disable-next-line no-null/no-null
   const leftColumnRef = useRef<HTMLDivElement>(null);
 
+  // Example in a React component or similar central script
+  useEffect(() => {
+    function receiveMessage(event: MessageEvent) {
+      // Check the origin for security reasons
+      if (event.origin !== 'http://localhost:3000') {
+        return;
+      }
+
+      // Handle the message
+      const data = event.data;
+
+      switch (data.type) {
+        case 'username':
+          processDeepLink(`tg://resolve?domain=${data.channel}`);
+          break;
+        case 'userId':
+          openChat({
+            id: data.channel,
+            threadId: -1,
+            type: 'thread',
+          });
+          break;
+        default:
+          // eslint-disable-next-line no-console
+          console.log(`Type for postMessage ${data.type}`);
+      }
+    }
+
+    window.addEventListener('message', receiveMessage);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('message', receiveMessage);
+    };
+  }, []);
+
   const { isDesktop } = useAppLayout();
   useEffect(() => {
     if (!isLeftColumnOpen && !isMiddleColumnOpen && !isDesktop) {

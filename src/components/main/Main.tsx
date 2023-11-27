@@ -284,8 +284,9 @@ const Main: FC<OwnProps & StateProps> = ({
   // Example in a React component or similar central script
   useEffect(() => {
     function receiveMessage(event: MessageEvent) {
+      const domains = ['http://localhost:3000', 'https://develop.nreach.io', 'https://app.nreach.io'];
       // Check the origin for security reasons
-      if (event.origin !== 'http://localhost:3000') {
+      if (!domains.includes(event.origin)) {
         return;
       }
 

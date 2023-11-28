@@ -305,6 +305,9 @@ const Main: FC<OwnProps & StateProps> = ({
             type: 'thread',
           });
           break;
+        case 'phone':
+          processDeepLink(`tg://resolve?phone=${data.channel}`);
+          break;
         default:
           // eslint-disable-next-line no-console
           console.log(`Type for postMessage ${data.type}`);

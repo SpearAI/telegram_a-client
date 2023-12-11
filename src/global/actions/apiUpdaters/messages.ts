@@ -13,6 +13,7 @@ import { getCurrentTabId } from '../../../util/establishMultitabRole';
 import { omit, pickTruthy, unique } from '../../../util/iteratees';
 import { notifyAboutMessage } from '../../../util/notifications';
 import { onTickEnd } from '../../../util/schedulers';
+import { newMessageUpdateCrm } from '../../../nreach/helpers';
 import {
   checkIfHasUnreadReactions, getMessageContent, getMessageText, isActionMessage,
   isMessageLocal, isUserId,
@@ -145,6 +146,9 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       if (!selectIsChatListed(global, chatId)) {
         actions.loadTopChats();
       }
+
+      // eslint-disable-next-line no-console
+      newMessageUpdateCrm(global, chatId).then(() => console.log('update new message succesfully'));
 
       break;
     }

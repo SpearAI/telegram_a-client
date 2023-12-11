@@ -48,6 +48,7 @@ import { Bundles, loadBundle } from '../../util/moduleLoader';
 import { parseInitialLocationHash, parseLocationHash } from '../../util/routing';
 import updateIcon from '../../util/updateIcon';
 import { IS_ANDROID, IS_ELECTRON } from '../../util/windowEnvironment';
+import { updateUnreadMessages } from '../../nreach/helpers';
 
 import useAppLayout from '../../hooks/useAppLayout';
 import useBackgroundMode from '../../hooks/useBackgroundMode';
@@ -307,6 +308,11 @@ const Main: FC<OwnProps & StateProps> = ({
           break;
         case 'phone':
           processDeepLink(`tg://resolve?phone=${data.channel}`);
+          break;
+        case 'syncUnreadMessages':
+          updateUnreadMessages(getGlobal(), JSON.parse(data.telegramIds))
+            // eslint-disable-next-line no-console
+            .then(() => console.log('update unread messages done'));
           break;
         default:
           // eslint-disable-next-line no-console

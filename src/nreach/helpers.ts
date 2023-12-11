@@ -33,7 +33,14 @@ export async function updateUnreadMessages<T extends GlobalState>(global: T, tel
         break;
     }
     if (chat) {
-      eidsToUpdate[eid] = newMessage ? (chat.unreadCount || 0) + 1 : (chat.unreadCount || 0);
+      let count = 0;
+      if (newMessage) {
+        count = chat?.lastMessage?.chatId !== chat?.lastMessage?.senderId
+          ? (chat.unreadCount || 0) + 1 : (chat.unreadCount || 0);
+      } else {
+        count = chat.unreadCount || 0;
+      }
+      eidsToUpdate[eid] = count;
       localStorageMapper[chat.id] = { eid, crmTelegramId: telegramId };
     }
   }
@@ -50,7 +57,8 @@ export async function newMessageUpdateCrm<T extends GlobalState>(global: T, chat
   const chat = localStorageMapper[chatId];
   if (!chat) return;
   const chatToUpdate = { [chat.crmTelegramId]: chat.eid };
-  await updateUnreadMessages(global, chatToUpdate, true);
+  const global2 = getGlobal();
+  await updateUnreadMessages(global2, chatToUpdate, true);
 }
 
 function updateCrmWithTimeout() {

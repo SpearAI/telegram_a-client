@@ -281,6 +281,7 @@ const Main: FC<OwnProps & StateProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line no-null/no-null
   const leftColumnRef = useRef<HTMLDivElement>(null);
+  const [crmPageInitialized, setCrmPageInitialized] = useState(false);
 
   // Example in a React component or similar central script
   useEffect(() => {
@@ -310,9 +311,12 @@ const Main: FC<OwnProps & StateProps> = ({
           processDeepLink(`tg://resolve?phone=${data.channel}`);
           break;
         case 'syncUnreadMessages':
-          updateUnreadMessages(getGlobal(), JSON.parse(data.telegramIds))
-            // eslint-disable-next-line no-console
-            .then(() => console.log('update unread messages done'));
+          if (!crmPageInitialized) {
+            updateUnreadMessages(getGlobal(), JSON.parse(data.telegramIds))
+              // eslint-disable-next-line no-console
+              .then(() => console.log('update unread messages done'));
+            setCrmPageInitialized(true);
+          }
           break;
         default:
           // eslint-disable-next-line no-console
@@ -326,7 +330,7 @@ const Main: FC<OwnProps & StateProps> = ({
     return () => {
       window.removeEventListener('message', receiveMessage);
     };
-  }, []);
+  }, [crmPageInitialized]);
 
   const { isDesktop } = useAppLayout();
   useEffect(() => {

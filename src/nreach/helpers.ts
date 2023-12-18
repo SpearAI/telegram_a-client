@@ -47,7 +47,7 @@ export async function updateUnreadMessages<T extends GlobalState>(global: T, tel
   localStorage.setItem('crmMapper', JSON.stringify(localStorageMapper));
   window.parent.postMessage({ type: 'UpdateUnreadMessages', dataToUpdate: JSON.stringify(eidsToUpdate) }, '*');
   // setTimeout(() => { updateCrmWithTimeout(); }, 20000);
-  updateCrmWithTimeout();
+  // updateCrmWithTimeout();
 }
 
 export async function newMessageUpdateCrm<T extends GlobalState>(global: T, chatId: string) {
@@ -62,18 +62,22 @@ export async function newMessageUpdateCrm<T extends GlobalState>(global: T, chat
   await updateUnreadMessages(global2, chatToUpdate, true);
 }
 
-function updateCrmWithTimeout() {
-  const localstorageMapperString = localStorage.getItem('crmMapper');
-  if (!localstorageMapperString) return;
-
-  const localStorageMapper: Record<string, object> = JSON.parse(localstorageMapperString);
-  const mapper: Record<string, string> = {};
-  for (const [chatId, data] of Object.entries(localStorageMapper)) {
-    // @ts-ignore
-    mapper[chatId] = data.eid;
+export function updateCrmWithTimeout<T extends GlobalState>(global: T, telegramToEids: Record<string, string>) {
+  // eslint-disable-next-line no-console
+  console.log('starting to updateCrmWithTimeout function');
+  if (!telegramToEids) {
+    const localstorageMapperString = localStorage.getItem('crmMapper');
+    if (!localstorageMapperString) return;
+    const localStorageMapper: Record<string, object> = JSON.parse(localstorageMapperString);
+    telegramToEids = {};
+    for (const [chatId, data] of Object.entries(localStorageMapper)) {
+      // @ts-ignore
+      telegramToEids[chatId] = data.eid;
+    }
+    global = getGlobal();
   }
-  const global = getGlobal();
-  updateUnreadMessages(global, mapper)
+
+  updateUnreadMessages(global, telegramToEids)
     .then(() => {
       setTimeout(updateCrmWithTimeout, 20000);
     })

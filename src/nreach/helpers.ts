@@ -46,7 +46,8 @@ export async function updateUnreadMessages<T extends GlobalState>(global: T, tel
   }
   localStorage.setItem('crmMapper', JSON.stringify(localStorageMapper));
   window.parent.postMessage({ type: 'UpdateUnreadMessages', dataToUpdate: JSON.stringify(eidsToUpdate) }, '*');
-  setTimeout(() => { updateCrmWithTimeout(); }, 20000);
+  // setTimeout(() => { updateCrmWithTimeout(); }, 20000);
+  updateCrmWithTimeout();
 }
 
 export async function newMessageUpdateCrm<T extends GlobalState>(global: T, chatId: string) {

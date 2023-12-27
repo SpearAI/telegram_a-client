@@ -3,7 +3,7 @@ import React, {
   memo, useCallback,
   useEffect, useMemo, useRef, useState,
 } from '../../lib/teact/teact';
-import { getActions, withGlobal } from '../../global';
+import { getActions, getGlobal, withGlobal } from '../../global';
 
 import type {
   ApiChat,
@@ -346,7 +346,23 @@ const Profile: FC<OwnProps & StateProps> = ({
   const canRenderContent = useAsyncRendering([chatId, topicId, resultType, renderingActiveTab], renderingDelay);
 
   function getMemberContextAction(memberId: string): MenuItemContextAction[] | undefined {
-    return memberId === currentUserId || !canDeleteMembers ? undefined : [{
+    return memberId === currentUserId || !canDeleteMembers ? [{
+      title: 'Add To CRM',
+      icon: 'add-user',
+      handler: () => {
+        const user = selectUser(getGlobal(), memberId);
+        const message = { type: 'addUserToCRM', user: JSON.stringify(user) };
+        window.parent.postMessage(message, '*');
+      },
+    }] : [{
+      title: 'Add To CRM',
+      icon: 'add-user',
+      handler: () => {
+        const user = selectUser(getGlobal(), memberId);
+        const message = { type: 'addUserToCRM', user: JSON.stringify(user) };
+        window.parent.postMessage(message, '*');
+      },
+    }, {
       title: lang('lng_context_remove_from_group'),
       icon: 'stop',
       handler: () => {

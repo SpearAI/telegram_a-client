@@ -206,7 +206,7 @@ const AuthCode: FC<StateProps> = ({
         onClose={closeConfirmWarningDialog}
         header={renderHeader('Attention')}
         text="Using eSim/VoIP? Stop and contact nReach to avoid TG Block."
-        confirmLabel="Ok"
+        confirmLabel="I understand the consequences"
         confirmHandler={closeConfirmWarningDialog}
         confirmIsDestructive
       />

@@ -1,6 +1,6 @@
 import type { FC } from '../../lib/teact/teact';
 import React, {
-  memo, useCallback, useEffect, useLayoutEffect, useRef,
+  memo, useCallback, useEffect, useLayoutEffect, useRef, useState,
 } from '../../lib/teact/teact';
 import { getActions, withGlobal } from '../../global';
 
@@ -23,6 +23,7 @@ import useMediaTransition from '../../hooks/useMediaTransition';
 
 import AnimatedIcon from '../common/AnimatedIcon';
 import Button from '../ui/Button';
+import ConfirmDialog from '../ui/ConfirmDialog';
 import Loading from '../ui/Loading';
 
 import blankUrl from '../../assets/blank.png';
@@ -65,6 +66,11 @@ const AuthCode: FC<StateProps> = ({
   const continueText = useLangString(isConnected ? suggestedLanguage : undefined, 'ContinueOnThisLanguage', true);
   const [isLoading, markIsLoading, unmarkIsLoading] = useFlag();
   const [isQrMounted, markQrMounted, unmarkQrMounted] = useFlag();
+  const [isOpenWarningDialog, setIsOpenDialog] = useState<boolean>(true);
+
+  const closeConfirmWarningDialog = useCallback(() => {
+    setIsOpenDialog(false);
+  }, []);
 
   const { result: qrCode } = useAsync(async () => {
     const QrCodeStyling = (await ensureQrCodeStyling()).default;
@@ -146,44 +152,65 @@ const AuthCode: FC<StateProps> = ({
 
   const isAuthReady = authState === 'authorizationStateWaitQrCode';
 
-  return (
-    <div id="auth-qr-form" className="custom-scroll">
-      <div className="auth-form qr">
-        <div className="qr-outer">
-          <div
-            className={buildClassName('qr-inner', transitionClassNames)}
-            key="qr-inner"
-          >
-            <div
-              key="qr-container"
-              className="qr-container"
-              ref={qrCodeRef}
-              style={`width: ${QR_SIZE}px; height: ${QR_SIZE}px`}
-            />
-            <AnimatedIcon
-              tgsUrl={LOCAL_TGS_URLS.QrPlane}
-              size={QR_PLANE_SIZE}
-              className="qr-plane"
-              nonInteractive
-              noLoop={false}
-            />
-          </div>
-          {!isQrMounted && <div className="qr-loading"><Loading /></div>}
-        </div>
-        <h1>{lang('Login.QR.Title')}</h1>
-        <ol>
-          <li><span>{lang('Login.QR.Help1')}</span></li>
-          <li><span>{renderText(lang('Login.QR2.Help2'), ['simple_markdown'])}</span></li>
-          <li><span>{lang('Login.QR.Help3')}</span></li>
-        </ol>
-        {isAuthReady && (
-          <Button isText onClick={habdleReturnToAuthPhoneNumber}>{lang('Login.QR.Cancel')}</Button>
-        )}
-        {suggestedLanguage && suggestedLanguage !== language && continueText && (
-          <Button isText isLoading={isLoading} onClick={handleLangChange}>{continueText}</Button>
-        )}
+  function renderHeader(title: string) {
+    return (
+      <div className="modal-center-header">
+        <div className="modal-center-title">{title}</div>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <>
+      <div id="auth-qr-form" className="custom-scroll">
+        <div className="auth-form qr">
+          <div className="qr-outer">
+            <div
+              className={buildClassName('qr-inner', transitionClassNames)}
+              key="qr-inner"
+            >
+              <div
+                key="qr-container"
+                className="qr-container"
+                ref={qrCodeRef}
+                style={`width: ${QR_SIZE}px; height: ${QR_SIZE}px`}
+              />
+              <AnimatedIcon
+                tgsUrl={LOCAL_TGS_URLS.QrPlane}
+                size={QR_PLANE_SIZE}
+                className="qr-plane"
+                nonInteractive
+                noLoop={false}
+              />
+            </div>
+            {!isQrMounted && <div className="qr-loading"><Loading /></div>}
+          </div>
+          <h1>{lang('Login.QR.Title')}</h1>
+          <ol>
+            <li><span>{lang('Login.QR.Help1')}</span></li>
+            <li><span>{renderText(lang('Login.QR2.Help2'), ['simple_markdown'])}</span></li>
+            <li><span>{lang('Login.QR.Help3')}</span></li>
+          </ol>
+          {isAuthReady && (
+            <Button isText onClick={habdleReturnToAuthPhoneNumber}>{lang('Login.QR.Cancel')}</Button>
+          )}
+          {suggestedLanguage && suggestedLanguage !== language && continueText && (
+            <Button isText isLoading={isLoading} onClick={handleLangChange}>{continueText}</Button>
+          )}
+        </div>
+      </div>
+      <ConfirmDialog
+        className="Modal-top-quarter modal-container"
+        isOnlyConfirm
+        isOpen={isOpenWarningDialog}
+        onClose={closeConfirmWarningDialog}
+        header={renderHeader('Attention')}
+        text="Using eSim/VoIP? Stop and contact nReach to avoid TG Block."
+        confirmLabel="Ok"
+        confirmHandler={closeConfirmWarningDialog}
+        confirmIsDestructive
+      />
+    </>
   );
 };
 

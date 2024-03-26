@@ -290,6 +290,11 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
     closeMenu();
   });
 
+  const handleAddToCRM = useLastCallback(() => {
+    const message = { type: 'addChatToCRM', chat: JSON.stringify(chat) };
+    window.parent.postMessage(message, '*');
+  });
+
   const handleEnterVoiceChatClick = useLastCallback(() => {
     if (canCreateVoiceChat) {
       // TODO Show popup to schedule
@@ -434,6 +439,12 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
           onClose={closeMenu}
           shouldCloseFast={shouldCloseFast}
         >
+          <MenuItem
+            icon="add-user"
+            onClick={handleAddToCRM}
+          >
+            Add To CRM
+          </MenuItem>
           {isMobile && canSearch && (
             <MenuItem
               icon="search"

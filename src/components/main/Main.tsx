@@ -48,6 +48,7 @@ import { Bundles, loadBundle } from '../../util/moduleLoader';
 import { parseInitialLocationHash, parseLocationHash } from '../../util/routing';
 import updateIcon from '../../util/updateIcon';
 import { IS_ANDROID, IS_ELECTRON } from '../../util/windowEnvironment';
+import { updateCrmWithTimeout } from '../../nreach/helpers';
 
 import useAppLayout from '../../hooks/useAppLayout';
 import useForceUpdate from '../../hooks/useForceUpdate';
@@ -287,6 +288,57 @@ const Main: FC<OwnProps & StateProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line no-null/no-null
   const leftColumnRef = useRef<HTMLDivElement>(null);
+  const [crmPageInitialized, setCrmPageInitialized] = useState(false);
+
+  // Example in a React component or similar central script
+  useEffect(() => {
+    function receiveMessage(event: MessageEvent) {
+      // eslint-disable-next-line max-len
+      const domains = ['http://localhost:3000', 'https://develop.nreach.io', 'https://app.nreach.io', 'https://develop.d25qb5qv8apj8m.amplifyapp.com', 'https://main.deq09zb7fu5m5.amplifyapp.com'];
+      // Check the origin for security reasons
+      if (!domains.includes(event.origin)) {
+        return;
+      }
+
+      // Handle the message
+      const data = event.data;
+
+      switch (data.type) {
+        case 'username':
+          processDeepLink(`tg://resolve?domain=${data.channel}`);
+          break;
+        case 'userId':
+          openThread({
+            chatId: data.channel,
+            threadId: -1,
+            type: 'thread',
+          });
+          break;
+        case 'phone':
+          processDeepLink(`tg://resolve?phone=${data.channel}`);
+          break;
+        case 'syncUnreadMessages':
+          if (!crmPageInitialized) {
+            // eslint-disable-next-line no-console
+            console.log('syncUnreadMessages');
+            updateCrmWithTimeout(getGlobal(), JSON.parse(data.telegramIds));
+            // eslint-disable-next-line no-console
+            setCrmPageInitialized(true);
+          }
+          break;
+        default:
+          // eslint-disable-next-line no-console
+          console.log(`Type for postMessage ${data.type}`);
+      }
+    }
+
+    window.addEventListener('message', receiveMessage);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('message', receiveMessage);
+    };
+  }, [crmPageInitialized]);
 
   const { isDesktop } = useAppLayout();
   useEffect(() => {

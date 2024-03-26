@@ -25,6 +25,11 @@ addActionHandler('processOpenChatOrThread', (global, actions, payload): ActionRe
     tabId = getCurrentTabId(),
   } = payload;
 
+  window.parent.postMessage({
+    type: 'chatChange',
+    url: chatId,
+  }, '*');
+
   const currentMessageList = selectCurrentMessageList(global, tabId);
 
   const tabState = selectTabState(global, tabId);
@@ -93,7 +98,7 @@ addActionHandler('openChatInNewTab', (global, actions, payload): ActionReturnTyp
 addActionHandler('openPreviousChat', (global, actions, payload): ActionReturnType => {
   const { tabId = getCurrentTabId() } = payload || {};
   actions.updatePageTitle({ tabId });
-  return updateCurrentMessageList(global, undefined, undefined, undefined, undefined, undefined, tabId);
+  return updateCurrentMessageList(global, undefined, undefined, undefined, true, undefined, tabId);
 });
 
 addActionHandler('openChatWithInfo', (global, actions, payload): ActionReturnType => {

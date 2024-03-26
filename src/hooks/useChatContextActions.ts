@@ -1,4 +1,4 @@
-import { useMemo } from '../lib/teact/teact';
+import { useCallback, useMemo } from '../lib/teact/teact';
 import { getActions } from '../global';
 
 import type { MenuItemContextAction } from '../components/ui/ListItem';
@@ -45,6 +45,17 @@ const useChatContextActions = ({
   const { isSelf } = user || {};
   const isServiceNotifications = user?.id === SERVICE_NOTIFICATIONS_USER_ID;
 
+  const handleAddToCRM = useCallback(() => {
+    let message = {};
+
+    if (user) {
+      message = { type: 'addUserToCRM', user: JSON.stringify(user) };
+    } else if (chat) {
+      message = { type: 'addChatToCRM', chat: JSON.stringify(chat) };
+    }
+    window.parent.postMessage(message, '*');
+  }, [user, chat]);
+
   const deleteTitle = useMemo(() => {
     if (!chat) return undefined;
 
@@ -87,6 +98,12 @@ const useChatContextActions = ({
           openChatInNewTab({ chatId: chat.id });
         }
       },
+    };
+
+    const actionAddToCRM = {
+      title: 'Add to CRM',
+      icon: 'add-user',
+      handler: handleAddToCRM,
     };
 
     const togglePinned = () => {
@@ -161,6 +178,7 @@ const useChatContextActions = ({
     const isInFolder = folderId !== undefined;
 
     return compact([
+      actionAddToCRM,
       actionOpenInNewTab,
       actionAddToFolder,
       actionMaskAsRead,
@@ -174,6 +192,7 @@ const useChatContextActions = ({
   }, [
     chat, user, canChangeFolder, lang, handleChatFolderChange, isPinned, isInSearch, isMuted, currentUserId,
     handleDelete, handleMute, handleReport, folderId, isSelf, isServiceNotifications, isSavedDialog, deleteTitle,
+    handleAddToCRM,
   ]);
 };
 

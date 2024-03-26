@@ -162,6 +162,16 @@
   .modal-content > p {
     unicode-bidi: plaintext;
     text-align: initial;
+    font-size: 1.00rem;
+  }
+
+  .modal-center-header {
+    justify-content: center;
+  }
+  .modal-center-title{
+    unicode-bidi: plaintext;
+    text-align: center;
+    font-size: 1.50rem;
   }
 
   .modal-about {
@@ -209,5 +219,23 @@
 
   .dialog-button-spacer {
     flex-grow: 1;
+  }
+
+  .Modal-top-quarter .modal-container {
+    align-items: flex-start; // Adjust alignment to start from the top
+    padding-top: 25vh; // Pushes the modal down to 25% of the viewport height
+  }
+
+}
+
+.Modal-top-quarter {
+  .modal-container {
+    align-items: flex-start; /* Start alignment from the top */
+    padding-top: 25%; /* Position the modal container 25% from the top of the viewport */
+  }
+
+  &.confirm .modal-container {
+    /* If you need specific overrides for .confirm modals using the .Modal-top-quarter styling */
+    padding-top: 25%; /* This ensures even .confirm modals align 25% from the top */
   }
 }

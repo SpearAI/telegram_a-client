@@ -35,8 +35,7 @@ export async function updateUnreadMessages<T extends GlobalState>(global: T, tel
     if (chat) {
       let count = 0;
       if (newMessage) {
-        count = chat?.lastMessage?.chatId !== chat?.lastMessage?.senderId
-          ? (chat.unreadCount || 0) + 1 : (chat.unreadCount || 0);
+        count = chat?.unreadCount || 0;
       } else {
         count = chat.unreadCount || 0;
       }

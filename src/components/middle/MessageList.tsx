@@ -15,16 +15,19 @@ import type { MessageListType } from '../../global/types';
 import type { Signal } from '../../util/signals';
 import type { PinnedIntersectionChangedCallback } from './hooks/usePinnedMessage';
 import { MAIN_THREAD_ID } from '../../api/types';
-import { LoadMoreDirection } from '../../types';
+import { LoadMoreDirection, type ThreadId } from '../../types';
 
 import {
   ANIMATION_END_DELAY,
+  ANONYMOUS_USER_ID,
   MESSAGE_LIST_SLICE,
   SERVICE_NOTIFICATIONS_USER_ID,
 } from '../../config';
 import { forceMeasure, requestForcedReflow, requestMeasure } from '../../lib/fasterdom/fasterdom';
 import {
+  getIsSavedDialog,
   getMessageHtmlId,
+  isAnonymousForwardsChat,
   isChatChannel,
   isChatGroup,
   isChatWithRepliesBot,
@@ -35,6 +38,7 @@ import {
   selectBot,
   selectChat,
   selectChatFullInfo,
+  selectChatLastMessage,
   selectChatMessages,
   selectChatScheduledMessages,
   selectCurrentMessageIds,
@@ -49,7 +53,6 @@ import {
   selectScrollOffset,
   selectTabState,
   selectThreadInfo,
-  selectThreadTopMessageId,
 } from '../../global/selectors';
 import animateScroll, { isAnimatingScroll, restartCurrentScrollAnimation } from '../../util/animateScroll';
 import buildClassName from '../../util/buildClassName';
@@ -59,7 +62,6 @@ import { debounce, onTickEnd } from '../../util/schedulers';
 import { groupMessages } from './helpers/groupMessages';
 import { preventMessageInputBlur } from './helpers/preventMessageInputBlur';
 
-import { isBackgroundModeActive } from '../../hooks/useBackgroundMode';
 import useEffectWithPrevDeps from '../../hooks/useEffectWithPrevDeps';
 import { dispatchHeavyAnimationEvent } from '../../hooks/useHeavyAnimationCheck';
 import useInterval from '../../hooks/useInterval';
@@ -68,6 +70,7 @@ import useLayoutEffectWithPrevDeps from '../../hooks/useLayoutEffectWithPrevDeps
 import useNativeCopySelectedMessages from '../../hooks/useNativeCopySelectedMessages';
 import { useStateRef } from '../../hooks/useStateRef';
 import useSyncEffect from '../../hooks/useSyncEffect';
+import { isBackgroundModeActive } from '../../hooks/window/useBackgroundMode';
 import useContainerHeight from './hooks/useContainerHeight';
 import useStickyDates from './hooks/useStickyDates';
 
@@ -81,8 +84,9 @@ import './MessageList.scss';
 
 type OwnProps = {
   chatId: string;
-  threadId: number;
+  threadId: ThreadId;
   type: MessageListType;
+  isComments?: boolean;
   canPost: boolean;
   isReady: boolean;
   onFabToggle: (shouldShow: boolean) => void;
@@ -101,27 +105,30 @@ type StateProps = {
   isGroupChat?: boolean;
   isChatWithSelf?: boolean;
   isRepliesChat?: boolean;
+  isAnonymousForwards?: boolean;
   isCreator?: boolean;
   isBot?: boolean;
+  isSynced?: boolean;
   messageIds?: number[];
   messagesById?: Record<number, ApiMessage>;
   firstUnreadId?: number;
-  isComments?: boolean;
   isViewportNewest?: boolean;
   isRestricted?: boolean;
   restrictionReason?: ApiRestrictionReason;
   focusingId?: number;
   isSelectModeActive?: boolean;
   lastMessage?: ApiMessage;
-  threadTopMessageId?: number;
   hasLinkedChat?: boolean;
   topic?: ApiTopic;
   noMessageSendingAnimation?: boolean;
   isServiceNotificationsChat?: boolean;
+  isEmptyThread?: boolean;
+  isForum?: boolean;
+  currentUserId: string;
 };
 
-const MESSAGE_REACTIONS_POLLING_INTERVAL = 15 * 1000;
-const MESSAGE_COMMENTS_POLLING_INTERVAL = 15 * 1000;
+const MESSAGE_REACTIONS_POLLING_INTERVAL = 20 * 1000;
+const MESSAGE_COMMENTS_POLLING_INTERVAL = 20 * 1000;
 const MESSAGE_STORY_POLLING_INTERVAL = 5 * 60 * 1000;
 const BOTTOM_THRESHOLD = 50;
 const UNREAD_DIVIDER_TOP = 10;
@@ -143,12 +150,15 @@ const MessageList: FC<OwnProps & StateProps> = ({
   onNotchToggle,
   isCurrentUserPremium,
   isChatLoaded,
+  isForum,
   isChannelChat,
   isGroupChat,
   canPost,
+  isSynced,
   isReady,
   isChatWithSelf,
   isRepliesChat,
+  isAnonymousForwards,
   isCreator,
   isBot,
   messageIds,
@@ -158,18 +168,19 @@ const MessageList: FC<OwnProps & StateProps> = ({
   isViewportNewest,
   isRestricted,
   restrictionReason,
+  isEmptyThread,
   focusingId,
   isSelectModeActive,
   lastMessage,
-  threadTopMessageId,
   hasLinkedChat,
   withBottomShift,
   withDefaultBg,
   topic,
   noMessageSendingAnimation,
   isServiceNotificationsChat,
-  onPinnedIntersectionChange,
+  currentUserId,
   getForceNextPinnedInHeader,
+  onPinnedIntersectionChange,
 }) => {
   const {
     loadViewportMessages, setScrollOffset, loadSponsoredMessages, loadMessageReactions, copyMessagesByIds,
@@ -196,6 +207,9 @@ const MessageList: FC<OwnProps & StateProps> = ({
   const isScrollTopJustUpdatedRef = useRef(false);
   const shouldAnimateAppearanceRef = useRef(Boolean(lastMessage));
 
+  const isSavedDialog = getIsSavedDialog(chatId, threadId, currentUserId);
+  const hasOpenChatButton = isSavedDialog && threadId !== ANONYMOUS_USER_ID;
+
   const areMessagesLoaded = Boolean(messageIds);
 
   useSyncEffect(() => {
@@ -213,10 +227,10 @@ const MessageList: FC<OwnProps & StateProps> = ({
   }, [firstUnreadId]);
 
   useEffect(() => {
-    if (!isCurrentUserPremium && isChannelChat && isReady) {
+    if (!isCurrentUserPremium && isChannelChat && isSynced && isReady) {
       loadSponsoredMessages({ chatId });
     }
-  }, [isCurrentUserPremium, chatId, isReady, isChannelChat]);
+  }, [isCurrentUserPremium, chatId, isSynced, isReady, isChannelChat]);
 
   // Updated only once when messages are loaded (as we want the unread divider to keep its position)
   useSyncEffect(() => {
@@ -244,15 +258,20 @@ const MessageList: FC<OwnProps & StateProps> = ({
       : ['id'];
 
     return listedMessages.length
-      ? groupMessages(orderBy(listedMessages, orderRule), memoUnreadDividerBeforeIdRef.current)
+      ? groupMessages(
+        orderBy(listedMessages, orderRule),
+        memoUnreadDividerBeforeIdRef.current,
+        !isForum ? Number(threadId) : undefined,
+        isChatWithSelf,
+      )
       : undefined;
-  }, [messageIds, messagesById, type, isServiceNotificationsChat]);
+  }, [messageIds, messagesById, type, isServiceNotificationsChat, isForum, threadId, isChatWithSelf]);
 
   useInterval(() => {
     if (!messageIds || !messagesById || type === 'scheduled') {
       return;
     }
-    const ids = messageIds.filter((id) => messagesById[id]?.reactions);
+    const ids = messageIds.filter((id) => messagesById[id]?.reactions?.results.length);
 
     if (!ids.length) return;
 
@@ -285,8 +304,9 @@ const MessageList: FC<OwnProps & StateProps> = ({
     if (!messageIds || !messagesById || threadId !== MAIN_THREAD_ID || type === 'scheduled') {
       return;
     }
-    const ids = messageIds.filter((id) => messagesById[id]?.repliesThreadInfo?.isComments
-      || messagesById[id]?.views !== undefined);
+    const global = getGlobal();
+    const ids = messageIds.filter((id) => selectThreadInfo(global, chatId, id)?.isCommentsInfo
+      || messagesById[id]?.viewsCount !== undefined);
 
     if (!ids.length) return;
 
@@ -538,9 +558,9 @@ const MessageList: FC<OwnProps & StateProps> = ({
   }, [isSelectModeActive]);
 
   const isPrivate = Boolean(chatId && isUserId(chatId));
-  const withUsers = Boolean((!isPrivate && !isChannelChat) || isChatWithSelf || isRepliesChat);
+  const withUsers = Boolean((!isPrivate && !isChannelChat) || isChatWithSelf || isRepliesChat || isAnonymousForwards);
   const noAvatars = Boolean(!withUsers || isChannelChat);
-  const shouldRenderGreeting = isUserId(chatId) && !isChatWithSelf && !isBot
+  const shouldRenderGreeting = isUserId(chatId) && !isChatWithSelf && !isBot && !isAnonymousForwards
     && (
       (
         !messageGroups && !lastMessage && messageIds
@@ -566,6 +586,7 @@ const MessageList: FC<OwnProps & StateProps> = ({
     isSelectModeActive && 'select-mode-active',
     isScrolled && 'scrolled',
     !isReady && 'is-animating',
+    hasOpenChatButton && 'saved-dialog',
   );
 
   const hasMessages = (messageIds && messageGroups) || lastMessage;
@@ -601,11 +622,13 @@ const MessageList: FC<OwnProps & StateProps> = ({
           chatId={chatId}
           isComments={isComments}
           isChannelChat={isChannelChat}
+          isSavedDialog={isSavedDialog}
           messageIds={messageIds || [lastMessage!.id]}
           messageGroups={messageGroups || groupMessages([lastMessage!])}
           getContainerHeight={getContainerHeight}
           isViewportNewest={Boolean(isViewportNewest)}
           isUnread={Boolean(firstUnreadId)}
+          isEmptyThread={isEmptyThread}
           withUsers={withUsers}
           noAvatars={noAvatars}
           containerRef={containerRef}
@@ -615,7 +638,6 @@ const MessageList: FC<OwnProps & StateProps> = ({
           threadId={threadId}
           type={type}
           isReady={isReady}
-          threadTopMessageId={threadTopMessageId}
           hasLinkedChat={hasLinkedChat}
           isSchedule={messageGroups ? type === 'scheduled' : false}
           shouldRenderBotInfo={isBot}
@@ -633,26 +655,28 @@ const MessageList: FC<OwnProps & StateProps> = ({
 
 export default memo(withGlobal<OwnProps>(
   (global, { chatId, threadId, type }): StateProps => {
+    const currentUserId = global.currentUserId!;
     const chat = selectChat(global, chatId);
     if (!chat) {
-      return {};
+      return { currentUserId };
     }
 
     const messageIds = selectCurrentMessageIds(global, chatId, threadId, type);
     const messagesById = type === 'scheduled'
       ? selectChatScheduledMessages(global, chatId)
       : selectChatMessages(global, chatId);
-    const threadTopMessageId = selectThreadTopMessageId(global, chatId, threadId);
-    const threadInfo = selectThreadInfo(global, chatId, threadId);
+
+    const isSavedDialog = getIsSavedDialog(chatId, threadId, currentUserId);
 
     if (
-      threadId !== MAIN_THREAD_ID && !chat?.isForum
-      && !(messagesById && threadTopMessageId && messagesById[threadTopMessageId])
+      threadId !== MAIN_THREAD_ID && !isSavedDialog && !chat?.isForum
+      && !(messagesById && threadId && messagesById[Number(threadId)])
     ) {
-      return {};
+      return { currentUserId };
     }
 
-    const { isRestricted, restrictionReason, lastMessage } = chat;
+    const { isRestricted, restrictionReason } = chat;
+    const lastMessage = selectChatLastMessage(global, chatId, isSavedDialog ? 'saved' : 'all');
     const focusingId = selectFocusedMessageId(global, chatId);
 
     const withLastMessageWhenPreloading = (
@@ -664,6 +688,7 @@ export default memo(withGlobal<OwnProps>(
 
     const topic = chat.topics?.[threadId];
     const chatFullInfo = !isUserId(chatId) ? selectChatFullInfo(global, chatId) : undefined;
+    const isEmptyThread = !selectThreadInfo(global, chatId, threadId)?.messagesCount;
 
     return {
       isCurrentUserPremium: selectIsCurrentUserPremium(global),
@@ -675,19 +700,22 @@ export default memo(withGlobal<OwnProps>(
       isCreator: chat.isCreator,
       isChatWithSelf: selectIsChatWithSelf(global, chatId),
       isRepliesChat: isChatWithRepliesBot(chatId),
+      isAnonymousForwards: isAnonymousForwardsChat(chatId),
       isBot: Boolean(chatBot),
+      isSynced: global.isSynced,
       messageIds,
       messagesById,
-      isComments: Boolean(threadInfo?.originChannelId),
       firstUnreadId: selectFirstUnreadId(global, chatId, threadId),
       isViewportNewest: type !== 'thread' || selectIsViewportNewest(global, chatId, threadId),
       focusingId,
       isSelectModeActive: selectIsInSelectMode(global),
-      threadTopMessageId,
       hasLinkedChat: chatFullInfo ? Boolean(chatFullInfo.linkedChatId) : undefined,
       topic,
       noMessageSendingAnimation: !selectPerformanceSettingsValue(global, 'messageSendingAnimations'),
       isServiceNotificationsChat: chatId === SERVICE_NOTIFICATIONS_USER_ID,
+      isForum: chat.isForum,
+      isEmptyThread,
+      currentUserId,
       ...(withLastMessageWhenPreloading && { lastMessage }),
     };
   },

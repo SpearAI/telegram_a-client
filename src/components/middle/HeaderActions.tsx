@@ -5,13 +5,15 @@ import React, {
 import { getActions, withGlobal } from '../../global';
 
 import type { MessageListType } from '../../global/types';
-import type { IAnchorPosition } from '../../types';
+import type { IAnchorPosition, ThreadId } from '../../types';
 import { MAIN_THREAD_ID } from '../../api/types';
 import { ManagementScreens } from '../../types';
 
 import { requestMeasure, requestNextMutation } from '../../lib/fasterdom/fasterdom';
 import {
   getHasAdminRight,
+  getIsSavedDialog,
+  isAnonymousForwardsChat,
   isChatBasicGroup, isChatChannel, isChatSuperGroup, isUserId,
 } from '../../global/helpers';
 import {
@@ -44,7 +46,7 @@ import HeaderMenuContainer from './HeaderMenuContainer.async';
 
 interface OwnProps {
   chatId: string;
-  threadId: number;
+  threadId: ThreadId;
   messageListType: MessageListType;
   canExpandActions: boolean;
   isForForum?: boolean;
@@ -130,6 +132,7 @@ const HeaderActions: FC<OwnProps & StateProps> = ({
     openChatLanguageModal,
     setSettingOption,
     unblockUser,
+    setViewForumAsMessages,
   } = getActions();
   // eslint-disable-next-line no-null/no-null
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -208,7 +211,8 @@ const HeaderActions: FC<OwnProps & StateProps> = ({
   });
 
   const handleAsMessagesClick = useLastCallback(() => {
-    openChat({ id: chatId, threadId: MAIN_THREAD_ID });
+    openChat({ id: chatId });
+    setViewForumAsMessages({ chatId, isEnabled: true });
   });
 
   function handleRequestCall() {
@@ -475,6 +479,8 @@ export default memo(withGlobal<OwnProps>(
     const isDiscussionThread = messageListType === 'thread' && threadId !== MAIN_THREAD_ID;
     const isRightColumnShown = selectIsRightColumnShown(global, isMobile);
 
+    const isSavedDialog = getIsSavedDialog(chatId, threadId, global.currentUserId);
+
     const isUserBlocked = isPrivate ? selectIsUserBlocked(global, chatId) : false;
     const canRestartBot = Boolean(bot && isUserBlocked);
     const canStartBot = !canRestartBot && Boolean(selectIsChatBotNotStarted(global, chatId));
@@ -483,9 +489,10 @@ export default memo(withGlobal<OwnProps>(
       (isMainThread || chat.isForum) && (isChannel || isChatSuperGroup(chat)) && chat.isNotJoined,
     );
     const canSearch = isMainThread || isDiscussionThread;
-    const canCall = ARE_CALLS_SUPPORTED && isUserId(chat.id) && !isChatWithSelf && !bot;
+    const canCall = ARE_CALLS_SUPPORTED && isUserId(chat.id) && !isChatWithSelf && !bot && !chat.isSupport
+      && !isAnonymousForwardsChat(chat.id);
     const canMute = isMainThread && !isChatWithSelf && !canSubscribe;
-    const canLeave = isMainThread && !canSubscribe;
+    const canLeave = isSavedDialog || (isMainThread && !canSubscribe);
     const canEnterVoiceChat = ARE_CALLS_SUPPORTED && isMainThread && chat.isCallActive;
     const canCreateVoiceChat = ARE_CALLS_SUPPORTED && isMainThread && !chat.isCallActive
       && (chat.adminRights?.manageCall || (chat.isCreator && isChatBasicGroup(chat)));

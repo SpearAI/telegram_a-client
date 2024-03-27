@@ -185,10 +185,8 @@ addActionHandler('sendPaymentForm', async (global, actions, payload): Promise<vo
   const formId = selectPaymentFormId(global, tabId);
   const requestInfoId = selectPaymentRequestId(global, tabId);
   const { nativeProvider, temporaryPassword } = selectTabState(global, tabId).payment;
-  const publishableKey = nativeProvider === 'stripe'
-    ? selectProviderPublishableKey(global, tabId) : selectProviderPublicToken(global, tabId);
 
-  if (!inputInvoice || !publishableKey || !formId || !nativeProvider) {
+  if (!inputInvoice || !formId) {
     return;
   }
 
@@ -341,6 +339,14 @@ async function sendSmartGlocalCredentials<T extends GlobalState>(
   setGlobal(global);
 }
 
+addActionHandler('setSmartGlocalCardInfo', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId(), type, token } = payload;
+  return setSmartGlocalCardInfo(global, {
+    type,
+    token,
+  }, tabId);
+});
+
 addActionHandler('setPaymentStep', (global, actions, payload): ActionReturnType => {
   const { step, tabId = getCurrentTabId() } = payload;
   return setPaymentStep(global, step ?? PaymentStep.Checkout, tabId);
@@ -407,7 +413,7 @@ addActionHandler('openGiftPremiumModal', async (global, actions, payload): Promi
       isOpen: true,
       forUserId,
       monthlyCurrency: month.currency,
-      monthlyAmount: month.amount,
+      monthlyAmount: String(month.amount),
     },
   }, tabId);
   setGlobal(global);
@@ -646,7 +652,7 @@ addActionHandler('applyBoost', async (global, actions, payload): Promise<void> =
 });
 
 addActionHandler('checkGiftCode', async (global, actions, payload): Promise<void> => {
-  const { slug, tabId = getCurrentTabId() } = payload;
+  const { slug, message, tabId = getCurrentTabId() } = payload;
 
   const result = await callApi('checkGiftCode', {
     slug,
@@ -667,6 +673,7 @@ addActionHandler('checkGiftCode', async (global, actions, payload): Promise<void
     giftCodeModal: {
       slug,
       info: result.code,
+      message,
     },
   }, tabId);
   setGlobal(global);

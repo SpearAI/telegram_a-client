@@ -23,17 +23,19 @@ export {
   getChatByPhoneNumber, toggleJoinToSend, toggleJoinRequest, fetchTopics, deleteTopic, togglePinnedTopic,
   editTopic, toggleForum, fetchTopicById, createTopic, toggleParticipantsHidden, checkChatlistInvite,
   joinChatlistInvite, createChalistInvite, editChatlistInvite, deleteChatlistInvite, fetchChatlistInvites,
-  fetchLeaveChatlistSuggestions, leaveChatlist, togglePeerTranslations,
+  fetchLeaveChatlistSuggestions, leaveChatlist, togglePeerTranslations, setViewForumAsMessages,
+  fetchChannelRecommendations, fetchSavedChats, toggleSavedDialogPinned,
 } from './chats';
 
 export {
   fetchMessages, fetchMessage, sendMessage, pinMessage, unpinAllMessages, deleteMessages, deleteHistory,
-  markMessageListRead, markMessagesRead, requestThreadInfoUpdate, searchMessagesLocal, searchMessagesGlobal,
+  markMessageListRead, markMessagesRead, searchMessagesLocal, searchMessagesGlobal,
   fetchWebPagePreview, editMessage, forwardMessages, loadPollOptionResults, sendPollVote, findFirstMessageIdAfterDate,
   fetchPinnedMessages, fetchScheduledHistory, sendScheduledMessages, rescheduleMessage, deleteScheduledMessages,
   reportMessages, sendMessageAction, fetchSeenBy, fetchSponsoredMessages, viewSponsoredMessage, fetchSendAs,
   saveDefaultSendAs, fetchUnreadReactions, readAllReactions, fetchUnreadMentions, readAllMentions, transcribeAudio,
-  closePoll, fetchExtendedMedia, translateText, fetchMessageViews,
+  closePoll, fetchExtendedMedia, translateText, fetchMessageViews, fetchDiscussionMessage, clickSponsoredMessage,
+  deleteSavedHistory,
 } from './messages';
 
 export {
@@ -66,7 +68,7 @@ export {
   fetchLanguages, fetchLangPack, fetchPrivacySettings, setPrivacySettings, registerDevice, unregisterDevice,
   updateIsOnline, fetchContentSettings, updateContentSettings, fetchLangStrings, fetchCountryList, fetchAppConfig,
   fetchGlobalPrivacySettings, updateGlobalPrivacySettings, toggleUsername, reorderUsernames, fetchConfig,
-  uploadContactProfilePhoto,
+  uploadContactProfilePhoto, fetchPeerColors,
 } from './settings';
 
 export {
@@ -74,7 +76,8 @@ export {
 } from './twoFaSettings';
 
 export {
-  answerCallbackButton, fetchTopInlineBots, fetchInlineBot, fetchInlineBotResults, sendInlineBotResult, startBot,
+  answerCallbackButton, setBotInfo, fetchTopInlineBots, fetchInlineBot, fetchInlineBotResults,
+  sendInlineBotResult, startBot,
   requestWebView, requestSimpleWebView, sendWebViewData, prolongWebView, loadAttachBots, toggleAttachBot, fetchBotApp,
   requestBotUrlAuth, requestLinkUrlAuth, acceptBotUrlAuth, acceptLinkUrlAuth, loadAttachBot, requestAppWebView,
   allowBotSendMessages, fetchBotCanSendMessage, invokeWebViewCustomMethod,
@@ -94,7 +97,7 @@ export {
 
 export {
   fetchChannelStatistics, fetchGroupStatistics, fetchMessageStatistics,
-  fetchMessagePublicForwards, fetchStatisticsAsyncGraph,
+  fetchMessagePublicForwards, fetchStatisticsAsyncGraph, fetchStoryStatistics, fetchStoryPublicForwards,
 } from './statistics';
 
 export {

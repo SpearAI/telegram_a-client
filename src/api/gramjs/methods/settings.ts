@@ -24,6 +24,7 @@ import {
   buildApiConfig,
   buildApiCountryList,
   buildApiNotifyException,
+  buildApiPeerColors,
   buildApiSession,
   buildApiWallpaper,
   buildApiWebSession, buildLangPack, buildLangPackString,
@@ -108,9 +109,12 @@ export async function updateProfilePhoto(photo?: ApiPhoto, isFallback?: boolean)
   return undefined;
 }
 
-export async function uploadProfilePhoto(file: File, isFallback?: boolean, isVideo = false, videoTs = 0) {
+export async function uploadProfilePhoto(
+  file: File, isFallback?: boolean, isVideo = false, videoTs = 0, bot?: ApiUser,
+) {
   const inputFile = await uploadFile(file);
   const result = await invokeRequest(new GramJs.photos.UploadProfilePhoto({
+    ...(bot ? { bot: buildInputPeer(bot.id, bot.accessHash) } : undefined),
     ...(isVideo ? { video: inputFile, videoStartTs: videoTs } : { file: inputFile }),
     ...(isFallback ? { fallback: true } : undefined),
   }));
@@ -251,7 +255,7 @@ export async function fetchBlockedUsers({
 export function blockUser({
   user,
   isOnlyStories,
-} : {
+}: {
   user: ApiUser;
   isOnlyStories?: true;
 }) {
@@ -264,7 +268,7 @@ export function blockUser({
 export function unblockUser({
   user,
   isOnlyStories,
-} : {
+}: {
   user: ApiUser;
   isOnlyStories?: true;
 }) {
@@ -563,6 +567,23 @@ export async function fetchConfig(): Promise<ApiConfig | undefined> {
   return buildApiConfig(result);
 }
 
+export async function fetchPeerColors(hash?: number) {
+  const result = await invokeRequest(new GramJs.help.GetPeerColors({
+    hash,
+  }));
+  if (!result) return undefined;
+
+  const colors = buildApiPeerColors(result);
+  if (!colors) return undefined;
+
+  const newHash = result instanceof GramJs.help.PeerColors ? result.hash : undefined;
+
+  return {
+    colors,
+    hash: newHash,
+  };
+}
+
 function updateLocalDb(
   result: (
     GramJs.account.PrivacyRules | GramJs.contacts.Blocked | GramJs.contacts.BlockedSlice |
@@ -596,7 +617,7 @@ export async function fetchGlobalPrivacySettings() {
   };
 }
 
-export async function updateGlobalPrivacySettings({ shouldArchiveAndMuteNewNonContact } : {
+export async function updateGlobalPrivacySettings({ shouldArchiveAndMuteNewNonContact }: {
   shouldArchiveAndMuteNewNonContact: boolean;
 }) {
   const result = await invokeRequest(new GramJs.account.SetGlobalPrivacySettings({

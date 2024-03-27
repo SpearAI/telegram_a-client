@@ -44,10 +44,6 @@ addActionHandler('initShared', (prevGlobal, actions, payload): ActionReturnType 
     global.byTabId = prevGlobal.byTabId;
   }
 
-  if (global.appConfig?.peerColors) {
-    updatePeerColors(global.appConfig.peerColors, global.appConfig.darkPeerColors);
-  }
-
   return global;
 });
 
@@ -121,7 +117,7 @@ addActionHandler('init', (global, actions, payload): ActionReturnType => {
     };
   });
 
-  const parsedMessageList = parseLocationHash();
+  const parsedMessageList = parseLocationHash(global.currentUserId);
 
   if (global.authState !== 'authorizationStateReady'
     && !global.passcode.hasPasscode && !global.passcode.isScreenLocked) {
@@ -142,6 +138,10 @@ addActionHandler('init', (global, actions, payload): ActionReturnType => {
     global.isCacheApiSupported = isSupported;
     setGlobal(global);
   });
+
+  if (global.peerColors) {
+    updatePeerColors(global.peerColors.general);
+  }
 
   return updateTabState(global, {
     messageLists: parsedMessageList ? [parsedMessageList] : initialTabState.messageLists,

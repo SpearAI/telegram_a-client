@@ -7,6 +7,8 @@ import VoiceAllowTalk from '../../../assets/tgs/calls/VoiceAllowTalk.tgs';
 import VoiceMini from '../../../assets/tgs/calls/VoiceMini.tgs';
 import VoiceMuted from '../../../assets/tgs/calls/VoiceMuted.tgs';
 import VoiceOutlined from '../../../assets/tgs/calls/VoiceOutlined.tgs';
+import Flame from '../../../assets/tgs/general/Flame.tgs';
+import PartyPopper from '../../../assets/tgs/general/PartyPopper.tgs';
 import Invite from '../../../assets/tgs/invites/Invite.tgs';
 import JoinRequest from '../../../assets/tgs/invites/Requests.tgs';
 import MonkeyClose from '../../../assets/tgs/monkeys/TwoFactorSetupMonkeyClose.tgs';
@@ -44,4 +46,6 @@ export const LOCAL_TGS_URLS = {
   QrPlane,
   Congratulations,
   Experimental,
+  PartyPopper,
+  Flame,
 };

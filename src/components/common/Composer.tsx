@@ -22,6 +22,7 @@ import type {
   ApiReaction,
   ApiStealthMode,
   ApiSticker,
+  ApiTopic,
   ApiUser,
   ApiVideo,
 } from '../../api/types';
@@ -29,7 +30,10 @@ import type {
   ApiDraft, GlobalState, MessageList,
   MessageListType, TabState,
 } from '../../global/types';
-import type { IAnchorPosition, InlineBotSettings, ISettings } from '../../types';
+import type {
+  IAnchorPosition, InlineBotSettings, ISettings, ThreadId,
+} from '../../types';
+import { MAIN_THREAD_ID } from '../../api/types';
 
 import {
   BASE_EMOJI_KEYWORD_LANG,
@@ -75,6 +79,7 @@ import {
   selectScheduledIds,
   selectTabState,
   selectTheme,
+  selectTopicFromMessage,
   selectUser,
   selectUserFullInfo,
 } from '../../global/selectors';
@@ -85,7 +90,7 @@ import { formatMediaDuration, formatVoiceRecordDuration } from '../../util/dateF
 import deleteLastCharacterOutsideSelection from '../../util/deleteLastCharacterOutsideSelection';
 import focusEditableElement from '../../util/focusEditableElement';
 import { MEMO_EMPTY_ARRAY } from '../../util/memo';
-import parseMessageInput from '../../util/parseMessageInput';
+import parseHtmlAsFormattedText from '../../util/parseHtmlAsFormattedText';
 import { insertHtmlInSelection } from '../../util/selection';
 import { getServerTime } from '../../util/serverTime';
 import { IS_IOS, IS_VOICE_RECORDING_SUPPORTED } from '../../util/windowEnvironment';
@@ -161,7 +166,7 @@ type ComposerType = 'messageList' | 'story';
 type OwnProps = {
   type: ComposerType;
   chatId: string;
-  threadId: number;
+  threadId: ThreadId;
   storyId?: number;
   messageListType: MessageListType;
   dropAreaState?: string;
@@ -184,6 +189,7 @@ type StateProps =
     editingMessage?: ApiMessage;
     chat?: ApiChat;
     draft?: ApiDraft;
+    replyToTopic?: ApiTopic;
     currentMessageList?: MessageList;
     isChatWithBot?: boolean;
     isChatWithSelf?: boolean;
@@ -282,6 +288,7 @@ const Composer: FC<OwnProps & StateProps> = ({
   messageListType,
   draft,
   chat,
+  replyToTopic,
   isForCurrentMessageList,
   isCurrentUserPremium,
   canSendVoiceByPrivacy,
@@ -349,7 +356,7 @@ const Composer: FC<OwnProps & StateProps> = ({
     openPollModal,
     closePollModal,
     loadScheduledHistory,
-    openChat,
+    openThread,
     addRecentEmoji,
     sendInlineBotResult,
     loadSendAs,
@@ -869,7 +876,7 @@ const Composer: FC<OwnProps & StateProps> = ({
       return;
     }
 
-    const { text, entities } = parseMessageInput(getHtml());
+    const { text, entities } = parseHtmlAsFormattedText(getHtml());
     if (!text && !attachmentsToSend.length) {
       return;
     }
@@ -931,11 +938,13 @@ const Composer: FC<OwnProps & StateProps> = ({
       }
     }
 
-    const { text, entities } = parseMessageInput(getHtml());
+    const { text, entities } = parseHtmlAsFormattedText(getHtml());
 
     if (currentAttachments.length) {
       sendAttachments({
         attachments: currentAttachments,
+        scheduledAt,
+        isSilent,
       });
       return;
     }
@@ -1246,8 +1255,8 @@ const Composer: FC<OwnProps & StateProps> = ({
   });
 
   const handleAllScheduledClick = useLastCallback(() => {
-    openChat({
-      id: chatId, threadId, type: 'scheduled', noForumTopicPanel: true,
+    openThread({
+      chatId, threadId, type: 'scheduled', noForumTopicPanel: true,
     });
   });
 
@@ -1292,6 +1301,11 @@ const Composer: FC<OwnProps & StateProps> = ({
   || isCustomSendMenuOpen || Boolean(activeVoiceRecording) || attachments.length > 0 || isInputHasFocus;
   const isReactionSelectorOpen = isComposerHasFocus && !isReactionPickerOpen && isInStoryViewer && !isAttachMenuOpen
     && !isSymbolMenuOpen;
+  const placeholderForForumAsMessages = chat?.isForum && chat?.isForumAsMessages && threadId === MAIN_THREAD_ID
+    ? (replyToTopic
+      ? lang('Chat.InputPlaceholderReplyInTopic', replyToTopic.title)
+      : lang('Message.Placeholder.MessageInGeneral'))
+    : undefined;
 
   useEffect(() => {
     if (isComposerHasFocus) {
@@ -1340,9 +1354,8 @@ const Composer: FC<OwnProps & StateProps> = ({
         if (!currentMessageList) {
           return;
         }
-
         requestCalendar((scheduledAt) => {
-          handleMessageSchedule({}, scheduledAt, currentMessageList!);
+          handleMessageSchedule({}, scheduledAt, currentMessageList);
         });
         break;
       default:
@@ -1398,7 +1411,7 @@ const Composer: FC<OwnProps & StateProps> = ({
         showCustomEmojiPremiumNotification();
         return;
       }
-      const customEmojiMessage = parseMessageInput(buildCustomEmojiHtml(sticker));
+      const customEmojiMessage = parseHtmlAsFormattedText(buildCustomEmojiHtml(sticker));
       text = customEmojiMessage.text;
       entities = customEmojiMessage.entities;
     }
@@ -1450,10 +1463,16 @@ const Composer: FC<OwnProps & StateProps> = ({
     sendSilent({ sendCompressed, sendGrouped });
   });
 
-  const onSend = mainButtonState === MainButtonState.Edit
-    ? handleEditComplete
-    : mainButtonState === MainButtonState.Schedule ? handleSendScheduled
-      : handleSend;
+  const onSend = useMemo(() => {
+    switch (mainButtonState) {
+      case MainButtonState.Edit:
+        return handleEditComplete;
+      case MainButtonState.Schedule:
+        return handleSendScheduled;
+      default:
+        return handleSend;
+    }
+  }, [mainButtonState, handleEditComplete]);
 
   const withBotCommands = isChatWithBot && botMenuButton?.type === 'commands' && !editingMessage
     && botCommands !== false && !activeVoiceRecording;
@@ -1680,7 +1699,7 @@ const Composer: FC<OwnProps & StateProps> = ({
               activeVoiceRecording && windowWidth <= SCREEN_WIDTH_TO_HIDE_PLACEHOLDER
                 ? ''
                 : (!isComposerBlocked
-                  ? (botKeyboardPlaceholder || inputPlaceholder || lang('Message'))
+                  ? (botKeyboardPlaceholder || inputPlaceholder || lang(placeholderForForumAsMessages || 'Message'))
                   : lang('Chat.PlaceholderTextNotAllowed'))
             }
             timedPlaceholderDate={timedPlaceholderDate}
@@ -1932,13 +1951,20 @@ export default memo(withGlobal<OwnProps>(
 
     const story = storyId && selectPeerStory(global, chatId, storyId);
     const sentStoryReaction = story && 'sentReaction' in story ? story.sentReaction : undefined;
+    const draft = selectDraft(global, chatId, threadId);
+    const replyToMessage = draft?.replyInfo
+      ? selectChatMessage(global, chatId, draft.replyInfo.replyToMsgId)
+      : undefined;
+    const replyToTopic = chat?.isForum && chat.isForumAsMessages && threadId === MAIN_THREAD_ID && replyToMessage
+      ? selectTopicFromMessage(global, replyToMessage)
+      : undefined;
 
     return {
       availableReactions: type === 'story' ? global.availableReactions : undefined,
       topReactions: type === 'story' ? global.topReactions : undefined,
       isOnActiveTab: !tabState.isBlurred,
       editingMessage: selectEditingMessage(global, chatId, threadId, messageListType),
-      draft: selectDraft(global, chatId, threadId),
+      draft,
       chat,
       isChatWithBot,
       isChatWithSelf,
@@ -1996,6 +2022,7 @@ export default memo(withGlobal<OwnProps>(
       shouldCollectDebugLogs: global.settings.byKey.shouldCollectDebugLogs,
       sentStoryReaction,
       stealthMode: global.stories.stealthMode,
+      replyToTopic,
     };
   },
 )(Composer));

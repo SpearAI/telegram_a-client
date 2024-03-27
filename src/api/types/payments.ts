@@ -20,6 +20,7 @@ export interface ApiPaymentSavedInfo {
 }
 
 export interface ApiPaymentForm {
+  url: string;
   canSaveCredentials?: boolean;
   isPasswordMissing?: boolean;
   formId: string;
@@ -75,7 +76,7 @@ export interface ApiPremiumSubscriptionOption {
   canPurchaseUpgrade?: boolean;
   months: number;
   currency: string;
-  amount: string;
+  amount: number;
   botUrl: string;
 }
 

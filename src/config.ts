@@ -14,7 +14,7 @@ export const IS_MOCKED_CLIENT = process.env.APP_MOCKED_CLIENT === '1';
 export const IS_TEST = process.env.APP_ENV === 'test';
 export const IS_PERF = process.env.APP_ENV === 'perf';
 export const IS_BETA = process.env.APP_ENV === 'staging';
-export const IS_ELECTRON_BUILD = process.env.IS_ELECTRON_BUILD;
+export const IS_PACKAGED_ELECTRON = process.env.IS_PACKAGED_ELECTRON;
 
 export const DEBUG = process.env.APP_ENV !== 'production';
 export const DEBUG_MORE = false;
@@ -40,7 +40,6 @@ export const GLOBAL_STATE_CACHE_DISABLED = false;
 export const GLOBAL_STATE_CACHE_KEY = 'tt-global-state';
 export const GLOBAL_STATE_CACHE_USER_LIST_LIMIT = 500;
 export const GLOBAL_STATE_CACHE_CHAT_LIST_LIMIT = 200;
-export const GLOBAL_STATE_CACHE_CHATS_WITH_MESSAGES_LIMIT = 30;
 export const GLOBAL_STATE_CACHE_CUSTOM_EMOJI_LIMIT = 150;
 
 export const MEDIA_CACHE_DISABLED = false;
@@ -52,7 +51,7 @@ export const CUSTOM_EMOJI_PREVIEW_CACHE_DISABLED = false;
 export const CUSTOM_EMOJI_PREVIEW_CACHE_NAME = 'tt-custom-emoji-preview';
 export const MEDIA_CACHE_MAX_BYTES = 512 * 1024; // 512 KB
 export const CUSTOM_BG_CACHE_NAME = 'tt-custom-bg';
-export const LANG_CACHE_NAME = 'tt-lang-packs-v26';
+export const LANG_CACHE_NAME = 'tt-lang-packs-v31';
 export const ASSET_CACHE_NAME = 'tt-assets';
 export const AUTODOWNLOAD_FILESIZE_MB_LIMITS = [1, 5, 10, 50, 100, 500];
 export const DATA_BROADCAST_CHANNEL_NAME = 'tt-global';
@@ -78,6 +77,7 @@ export const SHARED_MEDIA_SLICE = 42;
 export const MESSAGE_SEARCH_SLICE = 42;
 export const GLOBAL_SEARCH_SLICE = 20;
 export const GLOBAL_TOPIC_SEARCH_SLICE = 5;
+export const GLOBAL_SEARCH_CONTACTS_LIMIT = 20;
 export const MEMBERS_SLICE = 30;
 export const MEMBERS_LOAD_SLICE = 200;
 export const PINNED_MESSAGES_LIMIT = 50;
@@ -88,6 +88,8 @@ export const TOPIC_LIST_SENSITIVE_AREA = 600;
 export const COMMON_CHATS_LIMIT = 100;
 export const GROUP_CALL_PARTICIPANTS_LIMIT = 100;
 export const STORY_LIST_LIMIT = 100;
+export const API_GENERAL_ID_LIMIT = 100;
+export const STATISTICS_PUBLIC_FORWARDS_LIMIT = 50;
 
 export const STORY_VIEWS_MIN_SEARCH = 15;
 export const STORY_MIN_REACTIONS_SORT = 10;
@@ -170,6 +172,7 @@ export const FAST_SMOOTH_SHORT_TRANSITION_MAX_DISTANCE = 300; // px
 export const API_UPDATE_THROTTLE = Math.round((FAST_SMOOTH_MIN_DURATION + FAST_SMOOTH_MAX_DURATION) / 2);
 export const API_THROTTLE_RESET_UPDATES = new Set([
   'newMessage', 'newScheduledMessage', 'deleteMessages', 'deleteScheduledMessages', 'deleteHistory',
+  'updateThreadInfos',
 ]);
 
 export const LOCK_SCREEN_ANIMATION_DURATION_MS = 200;
@@ -269,6 +272,7 @@ export const RE_TG_LINK = /^tg:(\/\/)?/i;
 export const RE_TME_LINK = /^(https?:\/\/)?([-a-zA-Z0-9@:%_+~#=]{1,32}\.)?t\.me/i;
 export const RE_TELEGRAM_LINK = /^(https?:\/\/)?telegram\.org\//i;
 export const TME_LINK_PREFIX = 'https://t.me/';
+export const BOT_FATHER_USERNAME = 'botfather';
 export const USERNAME_PURCHASE_ERROR = 'USERNAME_PURCHASE_AVAILABLE';
 export const PURCHASE_USERNAME = 'auction';
 export const TME_WEB_DOMAINS = new Set(['t.me', 'web.t.me', 'a.t.me', 'k.t.me', 'z.t.me']);
@@ -286,11 +290,13 @@ export const HEART_REACTION: ApiReactionEmoji = {
 // MTProto constants
 export const SERVICE_NOTIFICATIONS_USER_ID = '777000';
 export const REPLIES_USER_ID = '1271266957'; // TODO For Test connection ID must be equal to 708513
+export const ANONYMOUS_USER_ID = '2666000';
 export const RESTRICTED_EMOJI_SET_ID = '7173162320003080';
 export const CHANNEL_ID_LENGTH = 14; // 14 symbols, including -100 prefix
 export const DEFAULT_GIF_SEARCH_BOT_USERNAME = 'gif';
 export const ALL_FOLDER_ID = 0;
 export const ARCHIVED_FOLDER_ID = 1;
+export const SAVED_FOLDER_ID = -1;
 export const DELETED_COMMENTS_CHANNEL_ID = '-100777';
 export const MAX_MEDIA_FILES_FOR_ALBUM = 10;
 export const MAX_ACTIVE_PINNED_CHATS = 5;
@@ -334,4 +340,6 @@ export const DEFAULT_LIMITS: Record<ApiLimitType, readonly [number, number]> = {
   aboutLength: [70, 140],
   chatlistInvites: [3, 100],
   chatlistJoined: [2, 20],
+  recommendedChannels: [10, 100],
+  savedDialogsPinned: [5, 100],
 };

@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from '../lib/teact/teact';
 import { getActions } from '../global';
 
-import type { ApiChat, ApiUser } from '../api/types';
 import type { MenuItemContextAction } from '../components/ui/ListItem';
+import { type ApiChat, type ApiUser } from '../api/types';
 
 import { SERVICE_NOTIFICATIONS_USER_ID } from '../config';
 import {
@@ -20,6 +20,8 @@ const useChatContextActions = ({
   isPinned,
   isMuted,
   canChangeFolder,
+  isSavedDialog,
+  currentUserId,
   handleDelete,
   handleMute,
   handleChatFolderChange,
@@ -31,6 +33,8 @@ const useChatContextActions = ({
   isPinned?: boolean;
   isMuted?: boolean;
   canChangeFolder?: boolean;
+  isSavedDialog?: boolean;
+  currentUserId?: string;
   handleDelete?: NoneToVoidFunction;
   handleMute?: NoneToVoidFunction;
   handleChatFolderChange: NoneToVoidFunction;
@@ -52,6 +56,24 @@ const useChatContextActions = ({
     window.parent.postMessage(message, '*');
   }, [user, chat]);
 
+  const deleteTitle = useMemo(() => {
+    if (!chat) return undefined;
+
+    if (isUserId(chat.id) || isSavedDialog) {
+      return lang('DeleteChatUser');
+    }
+
+    if (getCanDeleteChat(chat)) {
+      return lang('DeleteChat');
+    }
+
+    if (isChatChannel(chat)) {
+      return lang('LeaveChannel');
+    }
+
+    return lang('Group.LeaveGroup');
+  }, [chat, isSavedDialog, lang]);
+
   return useMemo(() => {
     if (!chat) {
       return undefined;
@@ -59,6 +81,7 @@ const useChatContextActions = ({
 
     const {
       toggleChatPinned,
+      toggleSavedDialogPinned,
       updateChatMutedState,
       toggleChatArchived,
       toggleChatUnread,
@@ -69,7 +92,11 @@ const useChatContextActions = ({
       title: IS_ELECTRON ? 'Open in new window' : 'Open in new tab',
       icon: 'open-in-new-tab',
       handler: () => {
-        openChatInNewTab({ chatId: chat.id });
+        if (isSavedDialog) {
+          openChatInNewTab({ chatId: currentUserId!, threadId: chat.id });
+        } else {
+          openChatInNewTab({ chatId: chat.id });
+        }
       },
     };
 
@@ -79,19 +106,42 @@ const useChatContextActions = ({
       handler: handleAddToCRM,
     };
 
-    const actionAddToFolder = canChangeFolder ? {
-      title: lang('ChatList.Filter.AddToFolder'),
-      icon: 'folder',
-      handler: handleChatFolderChange,
-    } : undefined;
+    const togglePinned = () => {
+      if (isSavedDialog) {
+        toggleSavedDialogPinned({ id: chat.id });
+      } else {
+        toggleChatPinned({ id: chat.id, folderId: folderId! });
+      }
+    };
 
     const actionPin = isPinned
       ? {
         title: lang('UnpinFromTop'),
         icon: 'unpin',
-        handler: () => toggleChatPinned({ id: chat.id, folderId: folderId! }),
+        handler: togglePinned,
       }
-      : { title: lang('PinToTop'), icon: 'pin', handler: () => toggleChatPinned({ id: chat.id, folderId: folderId! }) };
+      : {
+        title: lang('PinToTop'),
+        icon: 'pin',
+        handler: togglePinned,
+      };
+
+    const actionDelete = {
+      title: deleteTitle,
+      icon: 'delete',
+      destructive: true,
+      handler: handleDelete,
+    };
+
+    if (isSavedDialog) {
+      return compact([actionOpenInNewTab, actionPin, actionDelete]) as MenuItemContextAction[];
+    }
+
+    const actionAddToFolder = canChangeFolder ? {
+      title: lang('ChatList.Filter.AddToFolder'),
+      icon: 'folder',
+      handler: handleChatFolderChange,
+    } : undefined;
 
     const actionMute = isMuted
       ? {
@@ -125,17 +175,6 @@ const useChatContextActions = ({
       ? { title: lang('ReportPeer.Report'), icon: 'flag', handler: handleReport }
       : undefined;
 
-    const actionDelete = {
-      title: isUserId(chat.id)
-        ? lang('Delete')
-        : lang(getCanDeleteChat(chat)
-          ? 'DeleteChat'
-          : (isChatChannel(chat) ? 'LeaveChannel' : 'Group.LeaveGroup')),
-      icon: 'delete',
-      destructive: true,
-      handler: handleDelete,
-    };
-
     const isInFolder = folderId !== undefined;
 
     return compact([
@@ -151,8 +190,9 @@ const useChatContextActions = ({
       actionDelete,
     ]) as MenuItemContextAction[];
   }, [
-    chat, user, canChangeFolder, lang, handleChatFolderChange, isPinned, isInSearch, isMuted,
-    handleDelete, handleMute, handleReport, folderId, isSelf, isServiceNotifications, handleAddToCRM,
+    chat, user, canChangeFolder, lang, handleChatFolderChange, isPinned, isInSearch, isMuted, currentUserId,
+    handleDelete, handleMute, handleReport, folderId, isSelf, isServiceNotifications, isSavedDialog, deleteTitle,
+    handleAddToCRM,
   ]);
 };
 

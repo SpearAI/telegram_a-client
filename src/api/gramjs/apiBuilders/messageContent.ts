@@ -7,6 +7,7 @@ import type {
   ApiFormattedText,
   ApiGame,
   ApiGiveaway,
+  ApiGiveawayResults,
   ApiInvoice,
   ApiLocation,
   ApiMessageExtendedMediaPreview,
@@ -71,7 +72,18 @@ export function buildMessageTextContent(
 }
 
 export function buildMessageMediaContent(media: GramJs.TypeMessageMedia): MediaContent | undefined {
-  if ('ttlSeconds' in media && media.ttlSeconds) {
+  const ttlSeconds = 'ttlSeconds' in media ? media.ttlSeconds : undefined;
+
+  const isExpiredVoice = isExpiredVoiceMessage(media);
+  if (isExpiredVoice) {
+    return { isExpiredVoice };
+  }
+
+  const voice = buildVoice(media);
+  if (voice) return { voice, ttlSeconds };
+
+  // Other disappearing media types are not supported
+  if (ttlSeconds !== undefined) {
     return undefined;
   }
 
@@ -91,9 +103,6 @@ export function buildMessageMediaContent(media: GramJs.TypeMessageMedia): MediaC
 
   const audio = buildAudio(media);
   if (audio) return { audio };
-
-  const voice = buildVoice(media);
-  if (voice) return { voice };
 
   const document = buildDocumentFromMedia(media);
   if (document) return { document };
@@ -121,6 +130,9 @@ export function buildMessageMediaContent(media: GramJs.TypeMessageMedia): MediaC
 
   const giveaway = buildGiweawayFromMedia(media);
   if (giveaway) return { giveaway };
+
+  const giveawayResults = buildGiweawayResultsFromMedia(media);
+  if (giveawayResults) return { giveawayResults };
 
   return undefined;
 }
@@ -249,6 +261,13 @@ function buildAudio(media: GramJs.TypeMessageMedia): ApiAudio | undefined {
     ...pick(media.document, ['mimeType']),
     ...pick(audioAttribute, ['duration', 'performer', 'title']),
   };
+}
+
+function isExpiredVoiceMessage(media: GramJs.TypeMessageMedia): MediaContent['isExpiredVoice'] {
+  if (!(media instanceof GramJs.MessageMediaDocument)) {
+    return false;
+  }
+  return !media.document && media.voice;
 }
 
 function buildVoice(media: GramJs.TypeMessageMedia): ApiVoice | undefined {
@@ -480,7 +499,7 @@ function buildGiweawayFromMedia(media: GramJs.TypeMessageMedia): ApiGiveaway | u
 
 function buildGiveaway(media: GramJs.MessageMediaGiveaway): ApiGiveaway | undefined {
   const {
-    channels, months, quantity, untilDate, countriesIso2, onlyNewSubscribers,
+    channels, months, quantity, untilDate, countriesIso2, onlyNewSubscribers, prizeDescription,
   } = media;
 
   const channelIds = channels.map((channel) => buildApiPeerId(channel, 'channel'));
@@ -492,6 +511,38 @@ function buildGiveaway(media: GramJs.MessageMediaGiveaway): ApiGiveaway | undefi
     untilDate,
     countries: countriesIso2,
     isOnlyForNewSubscribers: onlyNewSubscribers,
+    prizeDescription,
+  };
+}
+
+function buildGiweawayResultsFromMedia(media: GramJs.TypeMessageMedia): ApiGiveawayResults | undefined {
+  if (!(media instanceof GramJs.MessageMediaGiveawayResults)) {
+    return undefined;
+  }
+
+  return buildGiveawayResults(media);
+}
+
+function buildGiveawayResults(media: GramJs.MessageMediaGiveawayResults): ApiGiveawayResults | undefined {
+  const {
+    months, untilDate, onlyNewSubscribers, launchMsgId, unclaimedCount, winners, winnersCount,
+    additionalPeersCount, prizeDescription, refunded, channelId,
+  } = media;
+
+  const winnerIds = winners.map((winner) => buildApiPeerId(winner, 'user'));
+
+  return {
+    months,
+    untilDate,
+    isOnlyForNewSubscribers: onlyNewSubscribers,
+    launchMessageId: launchMsgId,
+    channelId: buildApiPeerId(channelId, 'channel'),
+    unclaimedCount,
+    additionalPeersCount,
+    isRefunded: refunded,
+    prizeDescription,
+    winnerIds,
+    winnersCount,
   };
 }
 

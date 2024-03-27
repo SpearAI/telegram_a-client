@@ -90,6 +90,7 @@ export function buildApiPaymentForm(form: GramJs.payments.PaymentForm): ApiPayme
     savedInfo,
     invoice,
     savedCredentials,
+    url,
   } = form;
 
   const {
@@ -118,6 +119,7 @@ export function buildApiPaymentForm(form: GramJs.payments.PaymentForm): ApiPayme
   const nativeData = nativeParams ? JSON.parse(nativeParams.data) : {};
 
   return {
+    url,
     canSaveCredentials,
     isPasswordMissing,
     formId: String(formId),
@@ -194,7 +196,7 @@ function buildApiPremiumSubscriptionOption(option: GramJs.PremiumSubscriptionOpt
     isCurrent: current,
     canPurchaseUpgrade,
     currency,
-    amount: amount.toString(),
+    amount: amount.toJSNumber(),
     botUrl,
     months,
   };
@@ -248,7 +250,7 @@ export function buildApiGiveawayInfo(info: GramJs.payments.TypeGiveawayInfo): Ap
       type: 'active',
       startDate,
       isParticipating: participating,
-      adminDisallowedChatId: adminDisallowedChatId?.toString(),
+      adminDisallowedChatId: adminDisallowedChatId && buildApiPeerId(adminDisallowedChatId, 'channel'),
       disallowedCountry,
       joinedTooEarlyDate,
       isPreparingResults: preparingResults,

@@ -73,6 +73,7 @@ export { default as StickerSearch } from '../components/right/StickerSearch';
 export { default as GifSearch } from '../components/right/GifSearch';
 export { default as Statistics } from '../components/right/statistics/Statistics';
 export { default as MessageStatistics } from '../components/right/statistics/MessageStatistics';
+export { default as StoryStatistics } from '../components/right/statistics/StoryStatistics';
 export { default as PollResults } from '../components/right/PollResults';
 export { default as CreateTopic } from '../components/right/CreateTopic';
 export { default as EditTopic } from '../components/right/EditTopic';
@@ -81,3 +82,5 @@ export { default as Management } from '../components/right/management/Management
 
 export { default as PaymentModal } from '../components/payment/PaymentModal';
 export { default as ReceiptModal } from '../components/payment/ReceiptModal';
+export { default as InviteViaLinkModal } from '../components/main/InviteViaLinkModal';
+export { default as OneTimeMediaModal } from '../components/modals/oneTimeMedia/OneTimeMediaModal';

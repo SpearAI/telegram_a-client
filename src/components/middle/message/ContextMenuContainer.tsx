@@ -14,6 +14,7 @@ import { PREVIEW_AVATAR_COUNT, SERVICE_NOTIFICATIONS_USER_ID } from '../../../co
 import {
   areReactionsEmpty,
   getMessageVideo,
+  hasMessageTtl,
   isActionMessage,
   isChatChannel,
   isChatGroup,
@@ -43,6 +44,8 @@ import {
 } from '../../../global/selectors';
 import buildClassName from '../../../util/buildClassName';
 import { copyTextToClipboard } from '../../../util/clipboard';
+import { getSelectionAsFormattedText } from './helpers/getSelectionAsFormattedText';
+import { isSelectionRangeInsideMessage } from './helpers/isSelectionRangeInsideMessage';
 
 import useFlag from '../../../hooks/useFlag';
 import useLang from '../../../hooks/useLang';
@@ -93,6 +96,7 @@ type StateProps = {
   canCopy?: boolean;
   canTranslate?: boolean;
   canShowOriginal?: boolean;
+  isMessageTranslated?: boolean;
   canSelectLanguage?: boolean;
   isPrivate?: boolean;
   isCurrentUserPremium?: boolean;
@@ -112,6 +116,8 @@ type StateProps = {
   isReactionPickerOpen?: boolean;
   messageLink?: string;
 };
+
+const selection = window.getSelection();
 
 const ContextMenuContainer: FC<OwnProps & StateProps> = ({
   availableReactions,
@@ -158,6 +164,7 @@ const ContextMenuContainer: FC<OwnProps & StateProps> = ({
   canShowSeenBy,
   canScheduleUntilOnline,
   canTranslate,
+  isMessageTranslated,
   canShowOriginal,
   canSelectLanguage,
   isReactionPickerOpen,
@@ -166,7 +173,7 @@ const ContextMenuContainer: FC<OwnProps & StateProps> = ({
   onCloseAnimationEnd,
 }) => {
   const {
-    openChat,
+    openThread,
     updateDraftReplyInfo,
     setEditingId,
     pinMessage,
@@ -202,7 +209,7 @@ const ContextMenuContainer: FC<OwnProps & StateProps> = ({
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [isClosePollDialogOpen, openClosePollDialog, closeClosePollDialog] = useFlag();
-
+  const [canQuoteSelection, setCanQuoteSelection] = useState(false);
   const [requestCalendar, calendar] = useSchedule(canScheduleUntilOnline, onClose, message.date);
 
   // `undefined` indicates that emoji are present and loading
@@ -265,6 +272,35 @@ const ContextMenuContainer: FC<OwnProps & StateProps> = ({
     return activeDownloads?.[message.isScheduled ? 'scheduledIds' : 'ids']?.includes(message.id);
   }, [activeDownloads, album, message]);
 
+  const selectionRange = canReply && selection?.rangeCount ? selection.getRangeAt(0) : undefined;
+
+  useEffect(() => {
+    if (isMessageTranslated) {
+      setCanQuoteSelection(false);
+      return;
+    }
+
+    const isMessageTextSelected = selectionRange
+      && !selectionRange.collapsed
+      && Boolean(message.content.text?.text)
+      && isSelectionRangeInsideMessage(selectionRange);
+
+    if (!isMessageTextSelected) {
+      setCanQuoteSelection(false);
+      return;
+    }
+
+    const selectionText = getSelectionAsFormattedText(selectionRange);
+
+    setCanQuoteSelection(
+      selectionText.text.trim().length > 0
+      && message.content.text!.text!.includes(selectionText.text),
+    );
+  }, [
+    selectionRange, selectionRange?.collapsed, selectionRange?.startOffset, selectionRange?.endOffset,
+    isMessageTranslated, message.content.text,
+  ]);
+
   const handleDelete = useLastCallback(() => {
     setIsMenuOpen(false);
     setIsDeleteModalOpen(true);
@@ -296,13 +332,16 @@ const ContextMenuContainer: FC<OwnProps & StateProps> = ({
   });
 
   const handleReply = useLastCallback(() => {
-    updateDraftReplyInfo({ replyToMsgId: message.id });
+    updateDraftReplyInfo({
+      replyToMsgId: message.id,
+      quoteText: canQuoteSelection && selectionRange ? getSelectionAsFormattedText(selectionRange) : undefined,
+    });
     closeMenu();
   });
 
   const handleOpenThread = useLastCallback(() => {
-    openChat({
-      id: message.chatId,
+    openThread({
+      chatId: message.chatId,
       threadId: message.id,
     });
     closeMenu();
@@ -493,6 +532,7 @@ const ContextMenuContainer: FC<OwnProps & StateProps> = ({
         canSendNow={canSendNow}
         canReschedule={canReschedule}
         canReply={canReply}
+        canQuote={canQuoteSelection}
         canDelete={canDelete}
         canReport={canReport}
         canPin={canPin}
@@ -610,6 +650,7 @@ export default memo(withGlobal<OwnProps>(
     const isScheduled = messageListType === 'scheduled';
     const isChannel = chat && isChatChannel(chat);
     const isLocal = isMessageLocal(message);
+    const hasTtl = hasMessageTtl(message);
     const canShowSeenBy = Boolean(!isLocal
       && chat
       && seenByMaxChatMembers
@@ -656,7 +697,7 @@ export default memo(withGlobal<OwnProps>(
       canForward: !isScheduled && canForward,
       canFaveSticker: !isScheduled && canFaveSticker,
       canUnfaveSticker: !isScheduled && canUnfaveSticker,
-      canCopy: canCopyNumber || (!isProtected && canCopy),
+      canCopy: (canCopyNumber || (!isProtected && canCopy)),
       canCopyLink: !isScheduled && canCopyLink,
       canSelect,
       canDownload: !isProtected && canDownload,
@@ -671,7 +712,8 @@ export default memo(withGlobal<OwnProps>(
       isCurrentUserPremium,
       hasFullInfo: Boolean(chatFullInfo),
       canShowReactionsCount,
-      canShowReactionList: !isLocal && !isAction && !isScheduled && chat?.id !== SERVICE_NOTIFICATIONS_USER_ID,
+      canShowReactionList: !isLocal && !isAction
+        && !isScheduled && chat?.id !== SERVICE_NOTIFICATIONS_USER_ID && !hasTtl,
       canBuyPremium: !isCurrentUserPremium && !selectIsPremiumPurchaseBlocked(global),
       customEmojiSetsInfo,
       customEmojiSets,
@@ -679,6 +721,7 @@ export default memo(withGlobal<OwnProps>(
       canTranslate,
       canShowOriginal: hasTranslation && !isChatTranslated,
       canSelectLanguage: hasTranslation && !isChatTranslated,
+      isMessageTranslated: hasTranslation,
       canPlayAnimatedEmojis: selectCanPlayAnimatedEmojis(global),
       isReactionPickerOpen: selectIsReactionPickerOpen(global),
       messageLink,

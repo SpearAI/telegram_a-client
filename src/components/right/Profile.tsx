@@ -400,29 +400,44 @@ const Profile: FC<OwnProps & StateProps> = ({
   const canRenderContent = useAsyncRendering([chatId, threadId, resultType, renderingActiveTab], renderingDelay);
 
   function getMemberContextAction(memberId: string): MenuItemContextAction[] | undefined {
-    return memberId === currentUserId || !canDeleteMembers ? [{
+    const chatIdToCRMEidMap = JSON.parse(localStorage.getItem('crmMapper') || '{}');
+    const memberEid = chatIdToCRMEidMap[memberId]?.eid;
+
+    const handleAddToCRM = () => {
+      const user = selectUser(getGlobal(), memberId);
+      const message = { type: 'addUserToCRM', user: JSON.stringify(user) };
+      window.parent.postMessage(message, '*');
+    };
+
+    const handleOpenInCRM = () => {
+      const message = { type: 'openInCRM', eid: memberEid };
+      window.parent.postMessage(message, '*');
+    };
+
+    const actionAddToCRM: MenuItemContextAction = {
       title: 'Add To CRM',
       icon: 'add-user',
-      handler: () => {
-        const user = selectUser(getGlobal(), memberId);
-        const message = { type: 'addUserToCRM', user: JSON.stringify(user) };
-        window.parent.postMessage(message, '*');
+      handler: handleAddToCRM,
+    };
+
+    const actionOpenInCRM: MenuItemContextAction = {
+      title: 'Open In CRM',
+      icon: 'link-badge',
+      handler: handleOpenInCRM,
+    };
+
+    return memberId === currentUserId || !canDeleteMembers ? [
+      ...(memberEid ? [actionOpenInCRM] : [actionAddToCRM]),
+    ] : [
+      ...(memberEid ? [actionOpenInCRM] : [actionAddToCRM]),
+      {
+        title: lang('lng_context_remove_from_group'),
+        icon: 'stop',
+        handler: () => {
+          setDeletingUserId(memberId);
+        },
       },
-    }] : [{
-      title: 'Add To CRM',
-      icon: 'add-user',
-      handler: () => {
-        const user = selectUser(getGlobal(), memberId);
-        const message = { type: 'addUserToCRM', user: JSON.stringify(user) };
-        window.parent.postMessage(message, '*');
-      },
-    }, {
-      title: lang('lng_context_remove_from_group'),
-      icon: 'stop',
-      handler: () => {
-        setDeletingUserId(memberId);
-      },
-    }];
+    ];
   }
 
   function renderContent() {

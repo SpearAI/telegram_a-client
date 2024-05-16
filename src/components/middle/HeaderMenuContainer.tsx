@@ -206,6 +206,9 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
   const [shouldRenderMuteModal, markRenderMuteModal, unmarkRenderMuteModal] = useFlag();
   const { x, y } = anchor;
 
+  const chatIdToCRMEidMap = JSON.parse(localStorage.getItem('crmMapper') || '{}');
+  const chatEid = chatIdToCRMEidMap[chatId]?.eid;
+
   useShowTransition(isOpen, onCloseAnimationEnd, undefined, false);
   const isViewGroupInfoShown = usePrevDuringAnimation(
     (!isChatInfoShown && isForum) ? true : undefined, CLOSE_MENU_ANIMATION_DURATION,
@@ -292,6 +295,11 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
 
   const handleAddToCRM = useLastCallback(() => {
     const message = { type: 'addChatToCRM', chat: JSON.stringify(chat) };
+    window.parent.postMessage(message, '*');
+  });
+
+  const handleOpenInCRM = useLastCallback(() => {
+    const message = { type: 'openInCRM', eid: chatEid };
     window.parent.postMessage(message, '*');
   });
 
@@ -439,12 +447,21 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
           onClose={closeMenu}
           shouldCloseFast={shouldCloseFast}
         >
-          <MenuItem
-            icon="add-user"
-            onClick={handleAddToCRM}
-          >
-            Add To CRM
-          </MenuItem>
+          {chatEid ? (
+            <MenuItem
+              icon="link-badge"
+              onClick={handleOpenInCRM}
+            >
+              Open In CRM
+            </MenuItem>
+          ) : (
+            <MenuItem
+              icon="add-user"
+              onClick={handleAddToCRM}
+            >
+              Add To CRM
+            </MenuItem>
+          )}
           {isMobile && canSearch && (
             <MenuItem
               icon="search"

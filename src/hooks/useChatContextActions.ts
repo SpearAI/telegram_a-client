@@ -42,6 +42,8 @@ const useChatContextActions = ({
 }, isInSearch = false) => {
   const lang = useLang();
 
+  const chatIdToCRMEidMap = JSON.parse(localStorage.getItem('crmMapper') || '{}');
+
   const { isSelf } = user || {};
   const isServiceNotifications = user?.id === SERVICE_NOTIFICATIONS_USER_ID;
 
@@ -55,6 +57,11 @@ const useChatContextActions = ({
     }
     window.parent.postMessage(message, '*');
   }, [user, chat]);
+
+  const handleOpenInCRM = useCallback((eid: string) => {
+    const message = { type: 'openInCRM', eid };
+    window.parent.postMessage(message, '*');
+  }, []);
 
   const deleteTitle = useMemo(() => {
     if (!chat) return undefined;
@@ -88,6 +95,8 @@ const useChatContextActions = ({
       openChatInNewTab,
     } = getActions();
 
+    const contactEid = chatIdToCRMEidMap[chat.id]?.eid;
+
     const actionOpenInNewTab = IS_OPEN_IN_NEW_TAB_SUPPORTED && {
       title: IS_ELECTRON ? 'Open in new window' : 'Open in new tab',
       icon: 'open-in-new-tab',
@@ -100,7 +109,11 @@ const useChatContextActions = ({
       },
     };
 
-    const actionAddToCRM = {
+    const crmAction = contactEid ? {
+      title: 'Open In CRM',
+      icon: 'link-badge',
+      handler: () => handleOpenInCRM(contactEid),
+    } : {
       title: 'Add to CRM',
       icon: 'add-user',
       handler: handleAddToCRM,
@@ -178,7 +191,7 @@ const useChatContextActions = ({
     const isInFolder = folderId !== undefined;
 
     return compact([
-      actionAddToCRM,
+      crmAction,
       actionOpenInNewTab,
       actionAddToFolder,
       actionMaskAsRead,
@@ -192,7 +205,9 @@ const useChatContextActions = ({
   }, [
     chat, user, canChangeFolder, lang, handleChatFolderChange, isPinned, isInSearch, isMuted, currentUserId,
     handleDelete, handleMute, handleReport, folderId, isSelf, isServiceNotifications, isSavedDialog, deleteTitle,
+    chatIdToCRMEidMap,
     handleAddToCRM,
+    handleOpenInCRM,
   ]);
 };
 

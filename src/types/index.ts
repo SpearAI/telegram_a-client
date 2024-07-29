@@ -1,13 +1,23 @@
 import type { TeactNode } from '../lib/teact/teact';
 
 import type {
-  ApiBotInlineMediaResult, ApiBotInlineResult, ApiBotInlineSwitchPm,
+  ApiBotInlineMediaResult,
+  ApiBotInlineResult,
+  ApiBotInlineSwitchPm,
   ApiBotInlineSwitchWebview,
   ApiChat,
   ApiChatInviteImporter,
+  ApiDocument,
   ApiExportedInvite,
-  ApiLanguage, ApiMessage, ApiReaction, ApiStickerSet, ApiUser,
+  ApiLanguage,
+  ApiMessage,
+  ApiPhoto,
+  ApiReaction,
+  ApiStickerSet,
+  ApiUser,
+  ApiVideo,
 } from '../api/types';
+import type { IconName } from './icons';
 
 export type TextPart = TeactNode;
 
@@ -23,10 +33,16 @@ export enum FocusDirection {
   Static,
 }
 
+export type ScrollTargetPosition = ScrollLogicalPosition | 'centerOrTop';
+
 export interface IAlbum {
   albumId: string;
   messages: ApiMessage[];
+  isPaidMedia?: boolean;
   mainMessage: ApiMessage;
+  captionMessage?: ApiMessage;
+  hasMultipleCaptions: boolean;
+  commentsMessage?: ApiMessage;
 }
 
 export type ThreadId = string | number;
@@ -101,6 +117,8 @@ export interface ISettings extends NotifySettings, Record<string, any> {
   wasTimeFormatSetManually: boolean;
   isConnectionStatusMinimized: boolean;
   shouldArchiveAndMuteNewNonContact?: boolean;
+  shouldNewNonContactPeersRequirePremium?: boolean;
+  shouldHideReadMarks?: boolean;
   canTranslate: boolean;
   canTranslateChats: boolean;
   translationLanguage?: string;
@@ -121,6 +139,7 @@ export interface ApiPrivacySettings {
   allowChatIds: string[];
   blockUserIds: string[];
   blockChatIds: string[];
+  shouldAllowPremium?: true;
 }
 
 export interface ApiInputPrivacyRules {
@@ -130,6 +149,7 @@ export interface ApiInputPrivacyRules {
   allowedChats?: ApiChat[];
   blockedUsers?: ApiUser[];
   blockedChats?: ApiChat[];
+  shouldAllowPremium?: true;
 }
 
 export type IAnchorPosition = {
@@ -178,10 +198,12 @@ export enum SettingsScreens {
   PrivacyLastSeen,
   PrivacyProfilePhoto,
   PrivacyBio,
+  PrivacyBirthday,
   PrivacyPhoneCall,
   PrivacyPhoneP2P,
   PrivacyForwarding,
   PrivacyVoiceMessages,
+  PrivacyMessages,
   PrivacyGroupChats,
   PrivacyPhoneNumberAllowedContacts,
   PrivacyPhoneNumberDeniedContacts,
@@ -191,6 +213,8 @@ export enum SettingsScreens {
   PrivacyProfilePhotoDeniedContacts,
   PrivacyBioAllowedContacts,
   PrivacyBioDeniedContacts,
+  PrivacyBirthdayAllowedContacts,
+  PrivacyBirthdayDeniedContacts,
   PrivacyPhoneCallAllowedContacts,
   PrivacyPhoneCallDeniedContacts,
   PrivacyPhoneP2PAllowedContacts,
@@ -247,8 +271,8 @@ export enum SettingsScreens {
 }
 
 export type StickerSetOrReactionsSetOrRecent = Pick<ApiStickerSet, (
-  'id' | 'accessHash' | 'title' | 'count' | 'stickers' | 'hasThumbnail' | 'isLottie' | 'isVideos' | 'isEmoji' |
-  'installedDate' | 'isArchived'
+  'id' | 'accessHash' | 'title' | 'count' | 'stickers' | 'isEmoji' | 'installedDate' | 'isArchived' |
+  'hasThumbnail' | 'hasStaticThumb' | 'hasAnimatedThumb' | 'hasVideoThumb' | 'thumbCustomEmojiId'
 )> & { reactions?: ApiReaction[] };
 
 export enum LeftColumnContent {
@@ -265,6 +289,7 @@ export enum LeftColumnContent {
 
 export enum GlobalSearchContent {
   ChatList,
+  ChannelList,
   Media,
   Links,
   Files,
@@ -288,6 +313,8 @@ export enum RightColumnContent {
   EditTopic,
 }
 
+export type MediaViewerMedia = ApiPhoto | ApiVideo | ApiDocument;
+
 export enum MediaViewerOrigin {
   Inline,
   ScheduledInline,
@@ -299,6 +326,7 @@ export enum MediaViewerOrigin {
   ScheduledAlbum,
   SearchResult,
   SuggestedAvatar,
+  StarsTransaction,
 }
 
 export enum StoryViewerOrigin {
@@ -372,8 +400,24 @@ export type ProfileTabType =
   | 'dialogs';
 export type SharedMediaType = 'media' | 'documents' | 'links' | 'audio' | 'voice';
 export type ApiPrivacyKey = 'phoneNumber' | 'addByPhone' | 'lastSeen' | 'profilePhoto' | 'voiceMessages' |
-'forwards' | 'chatInvite' | 'phoneCall' | 'phoneP2P' | 'bio';
+'forwards' | 'chatInvite' | 'phoneCall' | 'phoneP2P' | 'bio' | 'birthday';
 export type PrivacyVisibility = 'everybody' | 'contacts' | 'closeFriends' | 'nonContacts' | 'nobody';
+
+export interface LoadingState {
+  areAllItemsLoadedForwards: boolean;
+  areAllItemsLoadedBackwards: boolean;
+}
+
+export interface ChatMediaSearchSegment {
+  foundIds: number[];
+  loadingState: LoadingState;
+}
+
+export interface ChatMediaSearchParams {
+  currentSegment: ChatMediaSearchSegment;
+  segments: ChatMediaSearchSegment[];
+  isLoading: boolean;
+}
 
 export enum ProfileState {
   Profile,
@@ -445,3 +489,20 @@ export type InlineBotSettings = {
   switchWebview?: ApiBotInlineSwitchWebview;
   cacheTime: number;
 };
+
+export type CustomPeerType = 'premium' | 'toBeDistributed' | 'contacts' | 'nonContacts'
+| 'groups' | 'channels' | 'bots' | 'excludeMuted' | 'excludeArchived' | 'excludeRead';
+
+export interface CustomPeer {
+  isCustomPeer: true;
+  titleKey: string;
+  subtitleKey?: string;
+  avatarIcon: IconName;
+  isAvatarSquare?: boolean;
+  peerColorId?: number;
+  withPremiumGradient?: boolean;
+}
+
+export interface UniqueCustomPeer extends CustomPeer {
+  type: CustomPeerType;
+}

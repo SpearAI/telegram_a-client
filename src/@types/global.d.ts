@@ -38,6 +38,7 @@ type AnyLiteral = Record<string, any>;
 type AnyClass = new (...args: any[]) => any;
 type AnyFunction = (...args: any[]) => any;
 type AnyToVoidFunction = (...args: any[]) => void;
+type BooleanToVoidFunction = (value: boolean) => void;
 type NoneToVoidFunction = () => void;
 
 type EmojiCategory = {
@@ -63,6 +64,7 @@ declare module '*.png';
 declare module '*.svg';
 declare module '*.tgs';
 declare module '*.wasm';
+declare module '*.strings';
 
 declare module '*.txt' {
   const content: string;

@@ -7,10 +7,10 @@ import type { TabState } from '../../global/types';
 import { MAIN_THREAD_ID } from '../../api/types';
 
 import { getCanPostInChat } from '../../global/helpers';
-import { selectChat } from '../../global/selectors';
+import { selectChat, selectChatFullInfo } from '../../global/selectors';
 
-import useInterval from '../../hooks/useInterval';
-import useLang from '../../hooks/useLang';
+import useInterval from '../../hooks/schedulers/useInterval';
+import useOldLang from '../../hooks/useOldLang';
 import useSendMessageAction from '../../hooks/useSendMessageAction';
 
 import Modal from '../ui/Modal';
@@ -32,7 +32,7 @@ type StateProps = {
 
 const GameModal: FC<OwnProps & StateProps> = ({ openedGame, gameTitle, canPost }) => {
   const { closeGame, openForwardMenu } = getActions();
-  const lang = useLang();
+  const lang = useOldLang();
   const { url, chatId, messageId } = openedGame || {};
   const isOpen = Boolean(url);
 
@@ -93,7 +93,8 @@ export default memo(withGlobal<OwnProps>(
   (global, { openedGame }): StateProps => {
     const { chatId } = openedGame || {};
     const chat = chatId && selectChat(global, chatId);
-    const canPost = Boolean(chat) && getCanPostInChat(chat, MAIN_THREAD_ID);
+    const chatFullInfo = chatId ? selectChatFullInfo(global, chatId) : undefined;
+    const canPost = Boolean(chat) && getCanPostInChat(chat, MAIN_THREAD_ID, undefined, chatFullInfo);
 
     return {
       canPost,

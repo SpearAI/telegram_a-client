@@ -10,13 +10,13 @@ import type {
   EmojiData,
   EmojiModule,
   EmojiRawData,
-} from '../../../util/emoji';
+} from '../../../util/emoji/emoji';
 
 import { MENU_TRANSITION_DURATION, RECENT_SYMBOL_SET_ID } from '../../../config';
 import animateHorizontalScroll from '../../../util/animateHorizontalScroll';
 import animateScroll from '../../../util/animateScroll';
 import buildClassName from '../../../util/buildClassName';
-import { uncompressEmoji } from '../../../util/emoji';
+import { uncompressEmoji } from '../../../util/emoji/emoji';
 import { pick } from '../../../util/iteratees';
 import { MEMO_EMPTY_ARRAY } from '../../../util/memo';
 import { IS_TOUCH_ENV } from '../../../util/windowEnvironment';
@@ -25,8 +25,8 @@ import { REM } from '../../common/helpers/mediaDimensions';
 import useAppLayout from '../../../hooks/useAppLayout';
 import useHorizontalScroll from '../../../hooks/useHorizontalScroll';
 import { useIntersectionObserver } from '../../../hooks/useIntersectionObserver';
-import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
+import useOldLang from '../../../hooks/useOldLang';
 import useScrolledState from '../../../hooks/useScrolledState';
 import useAsyncRendering from '../../right/hooks/useAsyncRendering';
 
@@ -134,7 +134,7 @@ const EmojiPicker: FC<OwnProps & StateProps> = ({
     animateHorizontalScroll(header, newLeft);
   }, [categories, activeCategoryIndex]);
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const allCategories = useMemo(() => {
     if (!categories) {

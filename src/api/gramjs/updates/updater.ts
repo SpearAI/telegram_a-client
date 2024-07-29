@@ -2,8 +2,8 @@ import { Api as GramJs, connection } from '../../../lib/gramjs';
 
 import type { GroupCallConnectionData } from '../../../lib/secret-sauce';
 import type {
-  ApiMessage, ApiMessageExtendedMediaPreview, ApiStory, ApiStorySkipped,
-  ApiUpdate, ApiUpdateConnectionStateType, MediaContent, OnApiUpdate,
+  ApiMessage, ApiStory, ApiStorySkipped,
+  ApiUpdate, ApiUpdateConnectionStateType, OnApiUpdate,
 } from '../../types';
 
 import { DEBUG, GENERAL_TOPIC_ID } from '../../../config';
@@ -29,7 +29,7 @@ import { buildApiPhoto, buildApiUsernames, buildPrivacyRules } from '../apiBuild
 import { omitVirtualClassFields } from '../apiBuilders/helpers';
 import {
   buildApiMessageExtendedMediaPreview,
-  buildMessageMediaContent,
+  buildBoughtMediaContent,
   buildPoll,
   buildPollResults,
 } from '../apiBuilders/messageContent';
@@ -38,6 +38,7 @@ import {
   buildApiMessageFromNotification,
   buildApiMessageFromShort,
   buildApiMessageFromShortChat,
+  buildApiQuickReply,
   buildApiThreadInfoFromMessage,
   buildMessageDraft,
 } from '../apiBuilders/messages';
@@ -60,7 +61,6 @@ import {
 import {
   buildChatPhotoForLocalDb,
   buildMessageFromUpdate,
-  isMessageWithMedia,
 } from '../gramjsBuilders';
 import {
   addEntitiesToLocalDb,
@@ -71,18 +71,16 @@ import {
   log,
   resolveMessageApiChatId,
   serializeBytes,
-  swapLocalInvoiceMedia,
 } from '../helpers';
 import localDb from '../localDb';
 import { scheduleMutedChatUpdate, scheduleMutedTopicUpdate } from '../scheduleUnmute';
 
+import LocalUpdatePremiumFloodWait from './UpdatePremiumFloodWait';
 import { LocalUpdateChannelPts, LocalUpdatePts, type UpdatePts } from './UpdatePts';
 
 export type Update = (
   (GramJs.TypeUpdate | GramJs.TypeUpdates) & { _entities?: (GramJs.TypeUser | GramJs.TypeChat)[] }
-) | typeof connection.UpdateConnectionState | UpdatePts;
-
-const DELETE_MISSING_CHANNEL_MESSAGE_DELAY = 1000;
+) | typeof connection.UpdateConnectionState | UpdatePts | LocalUpdatePremiumFloodWait;
 
 let onUpdate: OnApiUpdate;
 
@@ -203,12 +201,7 @@ export function updater(update: Update) {
         return;
       }
 
-      if ((update.message instanceof GramJs.Message && isMessageWithMedia(update.message))
-      || (update.message instanceof GramJs.MessageService
-          && update.message.action instanceof GramJs.MessageActionSuggestProfilePhoto)
-      ) {
-        addMessageToLocalDb(update.message);
-      }
+      addMessageToLocalDb(update.message);
 
       message = buildApiMessage(update.message)!;
       dispatchThreadInfoUpdates([update.message]);
@@ -242,12 +235,7 @@ export function updater(update: Update) {
     if (update.message instanceof GramJs.MessageService) {
       const { action } = update.message;
 
-      if (action instanceof GramJs.MessageActionPaymentSent) {
-        onUpdate({
-          '@type': 'updatePaymentStateCompleted',
-          slug: action.invoiceSlug,
-        });
-      } else if (action instanceof GramJs.MessageActionChatEditTitle) {
+      if (action instanceof GramJs.MessageActionChatEditTitle) {
         onUpdate({
           '@type': 'updateChat',
           id: message.chatId,
@@ -342,6 +330,38 @@ export function updater(update: Update) {
         });
       }
     }
+  } else if (update instanceof GramJs.UpdateQuickReplyMessage) {
+    const message = buildApiMessage(update.message);
+    if (!message) return;
+
+    onUpdate({
+      '@type': 'updateQuickReplyMessage',
+      id: message.id,
+      message,
+    });
+  } else if (update instanceof GramJs.UpdateDeleteQuickReplyMessages) {
+    onUpdate({
+      '@type': 'deleteQuickReplyMessages',
+      quickReplyId: update.shortcutId,
+      messageIds: update.messages,
+    });
+  } else if (update instanceof GramJs.UpdateQuickReplies) {
+    const quickReplies = update.quickReplies.map(buildApiQuickReply);
+    onUpdate({
+      '@type': 'updateQuickReplies',
+      quickReplies,
+    });
+  } else if (update instanceof GramJs.UpdateNewQuickReply) {
+    const quickReply = buildApiQuickReply(update.quickReply);
+    onUpdate({
+      '@type': 'updateQuickReplies',
+      quickReplies: [quickReply],
+    });
+  } else if (update instanceof GramJs.UpdateDeleteQuickReply) {
+    onUpdate({
+      '@type': 'deleteQuickReply',
+      quickReplyId: update.shortcutId,
+    });
   } else if (
     update instanceof GramJs.UpdateEditMessage
     || update instanceof GramJs.UpdateEditChannelMessage
@@ -356,9 +376,7 @@ export function updater(update: Update) {
       return;
     }
 
-    if (update.message instanceof GramJs.Message && isMessageWithMedia(update.message)) {
-      addMessageToLocalDb(update.message);
-    }
+    addMessageToLocalDb(update.message);
 
     // Workaround for a weird server behavior when own message is marked as incoming
     const message = omit(buildApiMessage(update.message)!, ['isOutgoing']);
@@ -378,28 +396,35 @@ export function updater(update: Update) {
       reactions: buildMessageReactions(update.reactions),
     });
   } else if (update instanceof GramJs.UpdateMessageExtendedMedia) {
-    let media: MediaContent | undefined;
-    if (update.extendedMedia instanceof GramJs.MessageExtendedMedia) {
-      media = buildMessageMediaContent(update.extendedMedia.media);
-    }
-
-    let preview: ApiMessageExtendedMediaPreview | undefined;
-    if (update.extendedMedia instanceof GramJs.MessageExtendedMediaPreview) {
-      preview = buildApiMessageExtendedMediaPreview(update.extendedMedia);
-    }
-
-    if (!media && !preview) return;
-
     const chatId = getApiChatIdFromMtpPeer(update.peer);
+    const isBought = update.extendedMedia[0] instanceof GramJs.MessageExtendedMedia;
+    if (isBought) {
+      const boughtMedia = buildBoughtMediaContent(update.extendedMedia);
 
-    swapLocalInvoiceMedia(chatId, update.msgId, update.extendedMedia);
+      if (!boughtMedia?.length) return;
+
+      onUpdate({
+        '@type': 'updateMessageExtendedMedia',
+        id: update.msgId,
+        chatId,
+        isBought,
+        extendedMedia: boughtMedia,
+      });
+      return;
+    }
+
+    const previewMedia = !isBought ? update.extendedMedia
+      .filter((m): m is GramJs.MessageExtendedMediaPreview => m instanceof GramJs.MessageExtendedMediaPreview)
+      .map((m) => buildApiMessageExtendedMediaPreview(m))
+      .filter(Boolean) : undefined;
+
+    if (!previewMedia?.length) return;
 
     onUpdate({
       '@type': 'updateMessageExtendedMedia',
       id: update.msgId,
       chatId,
-      media,
-      preview,
+      extendedMedia: previewMedia,
     });
   } else if (update instanceof GramJs.UpdateDeleteMessages) {
     onUpdate({
@@ -414,43 +439,12 @@ export function updater(update: Update) {
     });
   } else if (update instanceof GramJs.UpdateDeleteChannelMessages) {
     const chatId = buildApiPeerId(update.channelId, 'channel');
-    const ids = update.messages;
-    const existingIds = ids.filter((id) => localDb.messages[`${chatId}-${id}`]);
-    const missingIds = ids.filter((id) => !localDb.messages[`${chatId}-${id}`]);
-    const profilePhotoIds = ids.map((id) => {
-      const message = localDb.messages[`${chatId}-${id}`];
 
-      return message && message instanceof GramJs.MessageService && 'photo' in message.action
-        ? String(message.action.photo.id)
-        : undefined;
-    }).filter(Boolean);
-
-    if (existingIds.length) {
-      onUpdate({
-        '@type': 'deleteMessages',
-        ids: existingIds,
-        chatId,
-      });
-    }
-
-    if (profilePhotoIds.length) {
-      onUpdate({
-        '@type': 'deleteProfilePhotos',
-        ids: profilePhotoIds,
-        chatId,
-      });
-    }
-
-    // For some reason delete message update sometimes comes before new message update
-    if (missingIds.length) {
-      setTimeout(() => {
-        onUpdate({
-          '@type': 'deleteMessages',
-          ids: missingIds,
-          chatId,
-        });
-      }, DELETE_MISSING_CHANNEL_MESSAGE_DELAY);
-    }
+    onUpdate({
+      '@type': 'deleteMessages',
+      ids: update.messages,
+      chatId,
+    });
   } else if (update instanceof GramJs.UpdateServiceNotification) {
     if (update.popup) {
       onUpdate({
@@ -463,9 +457,7 @@ export function updater(update: Update) {
       const currentDate = Date.now() / 1000 + getServerTimeOffset();
       const message = buildApiMessageFromNotification(update, currentDate);
 
-      if (isMessageWithMedia(update)) {
-        addMessageToLocalDb(buildMessageFromUpdate(message.id, message.chatId, update));
-      }
+      addMessageToLocalDb(buildMessageFromUpdate(message.id, message.chatId, update));
 
       onUpdate({
         '@type': 'updateServiceNotification',
@@ -947,6 +939,8 @@ export function updater(update: Update) {
     onUpdate({ '@type': 'updateRecentStickers' });
   } else if (update instanceof GramJs.UpdateRecentReactions) {
     onUpdate({ '@type': 'updateRecentReactions' });
+  } else if (update instanceof GramJs.UpdateSavedReactionTags) {
+    onUpdate({ '@type': 'updateSavedReactionTags' });
   } else if (update instanceof GramJs.UpdateMoveStickerSetToTop) {
     if (!update.masks) {
       onUpdate({
@@ -1157,6 +1151,16 @@ export function updater(update: Update) {
       '@type': 'updateViewForumAsMessages',
       chatId: buildApiPeerId(update.channelId, 'channel'),
       isEnabled: update.enabled ? true : undefined,
+    });
+  } else if (update instanceof GramJs.UpdateStarsBalance) {
+    onUpdate({
+      '@type': 'updateStarsBalance',
+      balance: update.balance.toJSNumber(),
+    });
+  } else if (update instanceof LocalUpdatePremiumFloodWait) {
+    onUpdate({
+      '@type': 'updatePremiumFloodWait',
+      isUpload: update.isUpload,
     });
   } else if (update instanceof LocalUpdatePts || update instanceof LocalUpdateChannelPts) {
     // Do nothing, handled on the manager side

@@ -1,7 +1,9 @@
 import BigInt from 'big-integer';
 import { Api as GramJs } from '../../../lib/gramjs';
 
-import type { ApiChat, ApiReaction } from '../../types';
+import type {
+  ApiChat, ApiReaction, ApiSticker,
+} from '../../types';
 
 import {
   API_GENERAL_ID_LIMIT,
@@ -11,7 +13,14 @@ import {
 } from '../../../config';
 import { split } from '../../../util/iteratees';
 import { buildApiChatFromPreview } from '../apiBuilders/chats';
-import { buildApiAvailableReaction, buildApiReaction, buildMessagePeerReaction } from '../apiBuilders/reactions';
+import {
+  buildApiAvailableEffect,
+  buildApiAvailableReaction,
+  buildApiReaction,
+  buildApiSavedReactionTag,
+  buildMessagePeerReaction,
+} from '../apiBuilders/reactions';
+import { buildStickerFromDocument } from '../apiBuilders/symbols';
 import { buildApiUser } from '../apiBuilders/users';
 import { buildInputPeer, buildInputReaction } from '../gramjsBuilders';
 import { addEntitiesToLocalDb } from '../helpers';
@@ -62,7 +71,7 @@ export function sendEmojiInteraction({
   });
 }
 
-export async function getAvailableReactions() {
+export async function fetchAvailableReactions() {
   const result = await invokeRequest(new GramJs.messages.GetAvailableReactions({}));
 
   if (!result || result instanceof GramJs.messages.AvailableReactionsNotModified) {
@@ -88,6 +97,41 @@ export async function getAvailableReactions() {
   });
 
   return result.reactions.map(buildApiAvailableReaction);
+}
+
+export async function fetchAvailableEffects() {
+  const result = await invokeRequest(new GramJs.messages.GetAvailableEffects({}));
+
+  if (!result || result instanceof GramJs.messages.AvailableEffectsNotModified) {
+    return undefined;
+  }
+
+  const documentsMap = new Map(result.documents.map((doc) => [String(doc.id), doc]));
+
+  result.documents.forEach((document) => {
+    if (document instanceof GramJs.Document) {
+      localDb.documents[String(document.id)] = document;
+    }
+  });
+
+  const effects = result.effects.map(buildApiAvailableEffect);
+
+  const stickers : ApiSticker[] = [];
+  const emojis : ApiSticker[] = [];
+
+  for (const effect of effects) {
+    if (effect.effectAnimationId) {
+      const document = documentsMap.get(effect.effectStickerId);
+      const emoji = document && buildStickerFromDocument(document, false, effect.isPremium);
+      if (emoji) emojis.push(emoji);
+    } else {
+      const document = localDb.documents[effect.effectStickerId];
+      const sticker = buildStickerFromDocument(document);
+      if (sticker) { stickers.push(sticker); }
+    }
+  }
+
+  return { effects, emojis, stickers };
 }
 
 export function sendReaction({
@@ -201,4 +245,47 @@ export async function fetchRecentReactions({ hash = '0' }: { hash?: string }) {
 
 export function clearRecentReactions() {
   return invokeRequest(new GramJs.messages.ClearRecentReactions());
+}
+
+export async function fetchDefaultTagReactions({ hash = '0' }: { hash?: string }) {
+  const result = await invokeRequest(new GramJs.messages.GetDefaultTagReactions({
+    hash: BigInt(hash),
+  }));
+
+  if (!result || result instanceof GramJs.messages.ReactionsNotModified) {
+    return undefined;
+  }
+
+  return {
+    hash: String(result.hash),
+    reactions: result.reactions.map(buildApiReaction).filter(Boolean),
+  };
+}
+
+export async function fetchSavedReactionTags({ hash = '0' }: { hash?: string }) {
+  const result = await invokeRequest(new GramJs.messages.GetSavedReactionTags({ hash: BigInt(hash) }));
+
+  if (!result || result instanceof GramJs.messages.SavedReactionTagsNotModified) {
+    return undefined;
+  }
+
+  return {
+    hash: String(result.hash),
+    tags: result.tags.map(buildApiSavedReactionTag).filter(Boolean),
+  };
+}
+
+export function updateSavedReactionTag({
+  reaction,
+  title,
+}: {
+  reaction: ApiReaction;
+  title?: string;
+}) {
+  return invokeRequest(new GramJs.messages.UpdateSavedReactionTag({
+    reaction: buildInputReaction(reaction),
+    title,
+  }), {
+    shouldReturnTrue: true,
+  });
 }

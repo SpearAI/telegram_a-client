@@ -125,6 +125,9 @@ export function areSortedArraysEqual(array1: any[], array2: any[]) {
 export function areSortedArraysIntersecting(array1: any[], array2: any[]) {
   return array1[0] <= array2[array2.length - 1] && array1[array1.length - 1] >= array2[0];
 }
+export function isInsideSortedArrayRange(value:any, array: any[]) {
+  return array[0] <= value && value <= array[array.length - 1];
+}
 
 export function findIntersectionWithSet<T>(array: T[], set: Set<T>): T[] {
   return array.filter((a) => set.has(a));
@@ -163,7 +166,7 @@ export function split<T extends any>(array: T[], chunkSize: number) {
 }
 
 export function partition<T extends unknown>(
-  array: T[], filter: (value: T, index: number, array: T[]) => boolean,
+  array: T[], filter: (value: T, index: number, array: T[]) => boolean | undefined,
 ): [T[], T[]] {
   const pass: T[] = [];
   const fail: T[] = [];
@@ -186,6 +189,10 @@ export function cloneDeep<T>(value: T): T {
     acc[key as keyof T] = cloneDeep(value[key as keyof T]);
     return acc;
   }, {} as T);
+}
+
+export function isLiteralObject(value: any): value is AnyLiteral {
+  return isObject(value) && !Array.isArray(value);
 }
 
 function isObject(value: any): value is object {

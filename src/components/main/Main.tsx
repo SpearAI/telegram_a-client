@@ -9,10 +9,8 @@ import { addExtraClass } from '../../lib/teact/teact-dom';
 import { getActions, getGlobal, withGlobal } from '../../global';
 
 import type {
-  ApiAttachBot,
   ApiChat,
   ApiChatFolder,
-  ApiGeoPoint,
   ApiMessage,
   ApiUser,
 } from '../../api/types';
@@ -24,7 +22,6 @@ import {
   BASE_EMOJI_KEYWORD_LANG, DEBUG, INACTIVE_MARKER,
 } from '../../config';
 import { requestNextMutation } from '../../lib/fasterdom/fasterdom';
-import { getUserFullName } from '../../global/helpers';
 import {
   selectCanAnimateInterface,
   selectChatFolder,
@@ -50,15 +47,15 @@ import updateIcon from '../../util/updateIcon';
 import { IS_ANDROID, IS_ELECTRON } from '../../util/windowEnvironment';
 import { updateCrmWithTimeout } from '../../nreach/helpers';
 
+import useInterval from '../../hooks/schedulers/useInterval';
+import useTimeout from '../../hooks/schedulers/useTimeout';
 import useAppLayout from '../../hooks/useAppLayout';
 import useForceUpdate from '../../hooks/useForceUpdate';
 import { dispatchHeavyAnimationEvent } from '../../hooks/useHeavyAnimationCheck';
-import useInterval from '../../hooks/useInterval';
 import useLastCallback from '../../hooks/useLastCallback';
 import usePreventPinchZoomGesture from '../../hooks/usePreventPinchZoomGesture';
 import useShowTransition from '../../hooks/useShowTransition';
 import useSyncEffect from '../../hooks/useSyncEffect';
-import useTimeout from '../../hooks/useTimeout';
 import useBackgroundMode from '../../hooks/window/useBackgroundMode';
 import useBeforeUnload from '../../hooks/window/useBeforeUnload';
 import { useFullscreenStatus } from '../../hooks/window/useFullscreen';
@@ -73,17 +70,10 @@ import UnreadCount from '../common/UnreadCounter';
 import LeftColumn from '../left/LeftColumn';
 import MediaViewer from '../mediaViewer/MediaViewer.async';
 import AudioPlayer from '../middle/AudioPlayer';
-import ReactionPicker from '../middle/message/ReactionPicker.async';
+import ReactionPicker from '../middle/message/reactions/ReactionPicker.async';
 import MessageListHistoryHandler from '../middle/MessageListHistoryHandler';
 import MiddleColumn from '../middle/MiddleColumn';
-import AttachBotInstallModal from '../modals/attachBotInstall/AttachBotInstallModal.async';
-import BoostModal from '../modals/boost/BoostModal.async';
-import ChatlistModal from '../modals/chatlist/ChatlistModal.async';
-import GiftCodeModal from '../modals/giftcode/GiftCodeModal.async';
-import MapModal from '../modals/map/MapModal.async';
-import OneTimeMediaModal from '../modals/oneTimeMedia/OneTimeMediaModal.async';
-import UrlAuthModal from '../modals/urlAuth/UrlAuthModal.async';
-import WebAppModal from '../modals/webApp/WebAppModal.async';
+import ModalContainer from '../modals/ModalContainer';
 import PaymentModal from '../payment/PaymentModal.async';
 import ReceiptModal from '../payment/ReceiptModal.async';
 import RightColumn from '../right/RightColumn';
@@ -98,10 +88,11 @@ import DraftRecipientPicker from './DraftRecipientPicker.async';
 import ForwardRecipientPicker from './ForwardRecipientPicker.async';
 import GameModal from './GameModal';
 import HistoryCalendar from './HistoryCalendar.async';
-import InviteViaLinkModal from './InviteViaLinkModal.async';
 import NewContactModal from './NewContactModal.async';
 import Notifications from './Notifications.async';
 import PremiumLimitReachedModal from './premium/common/PremiumLimitReachedModal.async';
+import GiveawayModal from './premium/GiveawayModal.async';
+import PremiumGiftingModal from './premium/PremiumGiftingModal.async';
 import PremiumMainModal from './premium/PremiumMainModal.async';
 import SafeLinkModal from './SafeLinkModal.async';
 
@@ -125,8 +116,6 @@ type StateProps = {
   hasDialogs: boolean;
   audioMessage?: ApiMessage;
   safeLinkModalUrl?: string;
-  mapModalGeoPoint?: ApiGeoPoint;
-  mapModalZoom?: number;
   isHistoryCalendarOpen: boolean;
   shouldSkipHistoryAnimations?: boolean;
   openedStickerSetShortName?: string;
@@ -143,24 +132,20 @@ type StateProps = {
   openedGame?: TabState['openedGame'];
   gameTitle?: string;
   isRatePhoneCallModalOpen?: boolean;
-  webApp?: TabState['webApp'];
   isPremiumModalOpen?: boolean;
   botTrustRequest?: TabState['botTrustRequest'];
   botTrustRequestBot?: ApiUser;
-  attachBotToInstall?: ApiAttachBot;
   requestedAttachBotInChat?: TabState['requestedAttachBotInChat'];
   requestedDraft?: TabState['requestedDraft'];
-  currentUserName?: string;
-  urlAuth?: TabState['urlAuth'];
   limitReached?: ApiLimitTypeWithModal;
   deleteFolderDialog?: ApiChatFolder;
   isPaymentModalOpen?: boolean;
   isReceiptModalOpen?: boolean;
   isReactionPickerOpen: boolean;
+  isAppendModalOpen?: boolean;
+  isGiveawayModalOpen?: boolean;
+  isPremiumGiftingModalOpen?: boolean;
   isCurrentUserPremium?: boolean;
-  chatlistModal?: TabState['chatlistModal'];
-  boostModal?: TabState['boostModal'];
-  giftCodeModal?: TabState['giftCodeModal'];
   noRightColumnAnimation?: boolean;
   withInterfaceAnimations?: boolean;
   isSynced?: boolean;
@@ -187,8 +172,6 @@ const Main: FC<OwnProps & StateProps> = ({
   audioMessage,
   activeGroupCallId,
   safeLinkModalUrl,
-  mapModalGeoPoint,
-  mapModalZoom,
   isHistoryCalendarOpen,
   shouldSkipHistoryAnimations,
   limitReached,
@@ -208,31 +191,25 @@ const Main: FC<OwnProps & StateProps> = ({
   isRatePhoneCallModalOpen,
   botTrustRequest,
   botTrustRequestBot,
-  attachBotToInstall,
   requestedAttachBotInChat,
   requestedDraft,
-  webApp,
-  currentUserName,
-  urlAuth,
   isPremiumModalOpen,
+  isGiveawayModalOpen,
+  isPremiumGiftingModalOpen,
   isPaymentModalOpen,
   isReceiptModalOpen,
   isReactionPickerOpen,
   isCurrentUserPremium,
   deleteFolderDialog,
   isMasterTab,
-  chatlistModal,
-  giftCodeModal,
-  boostModal,
   noRightColumnAnimation,
   isSynced,
-  inviteViaLinkModal,
-  oneTimeMediaModal,
   currentUserId,
 }) => {
   const {
     initMain,
     loadAnimatedEmojis,
+    loadBirthdayNumbersStickers,
     loadNotificationSettings,
     loadNotificationExceptions,
     updateIsOnline,
@@ -266,11 +243,16 @@ const Main: FC<OwnProps & StateProps> = ({
     updatePageTitle,
     loadTopReactions,
     loadRecentReactions,
+    loadDefaultTagReactions,
     loadFeaturedEmojiStickers,
     setIsElectronUpdateAvailable,
-    loadPremiumSetStickers,
     loadAuthorizations,
     loadPeerColors,
+    loadSavedReactionTags,
+    loadTimezones,
+    loadQuickReplies,
+    loadStarStatus,
+    loadAvailableEffects,
   } = getActions();
 
   if (DEBUG && !DEBUG_isLogged) {
@@ -383,19 +365,26 @@ const Main: FC<OwnProps & StateProps> = ({
       initMain();
       loadAvailableReactions();
       loadAnimatedEmojis();
-      loadGenericEmojiEffects();
       loadNotificationSettings();
       loadNotificationExceptions();
-      loadTopInlineBots();
-      loadEmojiKeywords({ language: BASE_EMOJI_KEYWORD_LANG });
       loadAttachBots();
       loadContactList();
-      loadPremiumGifts();
       loadDefaultTopicIcons();
       checkAppVersion();
       loadTopReactions();
       loadRecentReactions();
+      loadDefaultTagReactions();
       loadFeaturedEmojiStickers();
+      loadTopInlineBots();
+      loadEmojiKeywords({ language: BASE_EMOJI_KEYWORD_LANG });
+      loadTimezones();
+      loadQuickReplies();
+      loadStarStatus();
+      loadPremiumGifts();
+      loadAvailableEffects();
+      loadBirthdayNumbersStickers();
+      loadGenericEmojiEffects();
+      loadSavedReactionTags();
       loadAuthorizations();
     }
   }, [isMasterTab, isSynced]);
@@ -405,7 +394,6 @@ const Main: FC<OwnProps & StateProps> = ({
     if (isMasterTab && isCurrentUserPremium) {
       loadDefaultStatusIcons();
       loadRecentEmojiStatuses();
-      loadPremiumSetStickers();
     }
   }, [isCurrentUserPremium, isMasterTab]);
 
@@ -460,11 +448,12 @@ const Main: FC<OwnProps & StateProps> = ({
 
   // Parse deep link
   useEffect(() => {
+    if (!isSynced) return;
     const parsedInitialLocationHash = parseInitialLocationHash();
     if (parsedInitialLocationHash?.tgaddr) {
       processDeepLink(decodeURIComponent(parsedInitialLocationHash.tgaddr));
     }
-  }, []);
+  }, [isSynced]);
 
   useEffect(() => {
     return window.electron?.on(ElectronEvent.DEEPLINK, (link: string) => {
@@ -602,9 +591,8 @@ const Main: FC<OwnProps & StateProps> = ({
       <Notifications isOpen={hasNotifications} />
       <Dialogs isOpen={hasDialogs} />
       {audioMessage && <AudioPlayer key={audioMessage.id} message={audioMessage} noUi />}
+      <ModalContainer />
       <SafeLinkModal url={safeLinkModalUrl} />
-      <MapModal geoPoint={mapModalGeoPoint} zoom={mapModalZoom} />
-      <UrlAuthModal urlAuth={urlAuth} currentUserName={currentUserName} />
       <HistoryCalendar isOpen={isHistoryCalendarOpen} />
       <StickerSetModal
         isOpen={Boolean(openedStickerSetShortName)}
@@ -622,12 +610,7 @@ const Main: FC<OwnProps & StateProps> = ({
         userId={newContactUserId}
         isByPhoneNumber={newContactByPhoneNumber}
       />
-      <BoostModal info={boostModal} />
-      <GiftCodeModal modal={giftCodeModal} />
-      <OneTimeMediaModal info={oneTimeMediaModal} />
-      <ChatlistModal info={chatlistModal} />
       <GameModal openedGame={openedGame} gameTitle={gameTitle} />
-      <WebAppModal webApp={webApp} />
       <DownloadManager />
       <ConfettiContainer />
       <PhoneCall isActive={isPhoneCallActive} />
@@ -638,16 +621,16 @@ const Main: FC<OwnProps & StateProps> = ({
         type={botTrustRequest?.type}
         shouldRequestWriteAccess={botTrustRequest?.shouldRequestWriteAccess}
       />
-      <AttachBotInstallModal bot={attachBotToInstall} />
       <AttachBotRecipientPicker requestedAttachBotInChat={requestedAttachBotInChat} />
       <MessageListHistoryHandler />
       {isPremiumModalOpen && <PremiumMainModal isOpen={isPremiumModalOpen} />}
+      {isGiveawayModalOpen && <GiveawayModal isOpen={isGiveawayModalOpen} />}
+      {isPremiumGiftingModalOpen && <PremiumGiftingModal isOpen={isPremiumGiftingModalOpen} />}
       <PremiumLimitReachedModal limit={limitReached} />
       <PaymentModal isOpen={isPaymentModalOpen} onClose={closePaymentModal} />
       <ReceiptModal isOpen={isReceiptModalOpen} onClose={clearReceipt} />
       <DeleteFolderDialog folder={deleteFolderDialog} />
       <ReactionPicker isOpen={isReactionPickerOpen} />
-      <InviteViaLinkModal userIds={inviteViaLinkModal?.restrictedUserIds} chatId={inviteViaLinkModal?.chatId} />
     </div>
   );
 };
@@ -665,13 +648,9 @@ export default memo(withGlobal<OwnProps>(
 
     const {
       botTrustRequest,
-      requestedAttachBotInstall,
       requestedAttachBotInChat,
       requestedDraft,
-      urlAuth,
-      webApp,
       safeLinkModalUrl,
-      mapModal,
       openedStickerSetShortName,
       openedCustomEmojiSetIds,
       shouldSkipHistoryAnimations,
@@ -684,15 +663,12 @@ export default memo(withGlobal<OwnProps>(
       newContact,
       ratingPhoneCall,
       premiumModal,
+      giveawayModal,
+      giftingModal,
       isMasterTab,
       payment,
       limitReachedModal,
       deleteFolderDialogModal,
-      chatlistModal,
-      boostModal,
-      giftCodeModal,
-      inviteViaLinkModal,
-      oneTimeMediaModal,
     } = selectTabState(global);
 
     const { chatId: audioChatId, messageId: audioMessageId } = audioPlayer;
@@ -701,7 +677,6 @@ export default memo(withGlobal<OwnProps>(
       : undefined;
     const gameMessage = openedGame && selectChatMessage(global, openedGame.chatId, openedGame.messageId);
     const gameTitle = gameMessage?.content.game?.title;
-    const currentUser = global.currentUserId ? selectUser(global, global.currentUserId) : undefined;
     const { chatId } = selectCurrentMessageList(global) || {};
     const noRightColumnAnimation = !selectPerformanceSettingsValue(global, 'rightColumnAnimations')
         || !selectCanAnimateInterface(global);
@@ -721,8 +696,6 @@ export default memo(withGlobal<OwnProps>(
       hasDialogs: Boolean(dialogs.length),
       audioMessage,
       safeLinkModalUrl,
-      mapModalGeoPoint: mapModal?.point,
-      mapModalZoom: mapModal?.zoom,
       isHistoryCalendarOpen: Boolean(historyCalendarSelectedAt),
       shouldSkipHistoryAnimations,
       openedStickerSetShortName,
@@ -742,26 +715,19 @@ export default memo(withGlobal<OwnProps>(
       isRatePhoneCallModalOpen: Boolean(ratingPhoneCall),
       botTrustRequest,
       botTrustRequestBot: botTrustRequest && selectUser(global, botTrustRequest.botId),
-      attachBotToInstall: requestedAttachBotInstall?.bot,
       requestedAttachBotInChat,
-      webApp,
-      currentUserName: getUserFullName(currentUser),
-      urlAuth,
       isCurrentUserPremium: selectIsCurrentUserPremium(global),
       isPremiumModalOpen: premiumModal?.isOpen,
+      isGiveawayModalOpen: giveawayModal?.isOpen,
+      isPremiumGiftingModalOpen: giftingModal?.isOpen,
       limitReached: limitReachedModal?.limit,
       isPaymentModalOpen: payment.isPaymentModalOpen,
       isReceiptModalOpen: Boolean(payment.receipt),
       deleteFolderDialog,
       isMasterTab,
       requestedDraft,
-      chatlistModal,
-      boostModal,
-      giftCodeModal,
       noRightColumnAnimation,
       isSynced: global.isSynced,
-      inviteViaLinkModal,
-      oneTimeMediaModal,
     };
   },
 )(Main));

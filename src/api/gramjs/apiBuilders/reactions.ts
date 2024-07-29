@@ -1,12 +1,14 @@
 import { Api as GramJs } from '../../../lib/gramjs';
 
 import type {
+  ApiAvailableEffect,
   ApiAvailableReaction,
   ApiPeerReaction,
   ApiReaction,
   ApiReactionCount,
   ApiReactionEmoji,
   ApiReactions,
+  ApiSavedReactionTag,
 } from '../../types';
 
 import { buildApiDocument } from './messageContent';
@@ -14,10 +16,11 @@ import { getApiChatIdFromMtpPeer } from './peers';
 
 export function buildMessageReactions(reactions: GramJs.MessageReactions): ApiReactions {
   const {
-    recentReactions, results, canSeeList,
+    recentReactions, results, canSeeList, reactionsAsTags,
   } = reactions;
 
   return {
+    areTags: reactionsAsTags,
     canSeeList,
     results: results.map(buildReactionCount).filter(Boolean).sort(reactionCountComparator),
     recentReactions: recentReactions?.map(buildMessagePeerReaction).filter(Boolean),
@@ -82,6 +85,18 @@ export function buildApiReaction(reaction: GramJs.TypeReaction): ApiReaction | u
   return undefined;
 }
 
+export function buildApiSavedReactionTag(tag: GramJs.SavedReactionTag): ApiSavedReactionTag | undefined {
+  const { reaction, title, count } = tag;
+  const apiReaction = buildApiReaction(reaction);
+  if (!apiReaction) return undefined;
+
+  return {
+    reaction: apiReaction,
+    title,
+    count,
+  };
+}
+
 export function buildApiAvailableReaction(availableReaction: GramJs.AvailableReaction): ApiAvailableReaction {
   const {
     selectAnimation, staticIcon, reaction, title, appearAnimation,
@@ -101,5 +116,20 @@ export function buildApiAvailableReaction(availableReaction: GramJs.AvailableRea
     title,
     isInactive: inactive,
     isPremium: premium,
+  };
+}
+
+export function buildApiAvailableEffect(availableEffect: GramJs.AvailableEffect): ApiAvailableEffect {
+  const {
+    id, emoticon, premiumRequired, staticIconId, effectStickerId, effectAnimationId,
+  } = availableEffect;
+
+  return {
+    id: id.toString(),
+    emoticon,
+    isPremium: premiumRequired,
+    staticIconId: staticIconId?.toString(),
+    effectStickerId: effectStickerId.toString(),
+    effectAnimationId: effectAnimationId?.toString(),
   };
 }

@@ -41,6 +41,7 @@ addActionHandler('processOpenChatOrThread', (global, actions, payload): ActionRe
       },
     }, tabId);
   }
+  actions.hideEffectInComposer({ tabId });
 
   if (!currentMessageList || (
     currentMessageList.chatId !== chatId
@@ -52,6 +53,7 @@ addActionHandler('processOpenChatOrThread', (global, actions, payload): ActionRe
 
       global = updateTabState(global, {
         activeReactions: {},
+        shouldPreventComposerAnimation: true,
       }, tabId);
     }
 

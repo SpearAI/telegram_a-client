@@ -4,7 +4,7 @@ import type { GlobalState, TabArgs } from '../types';
 import { NewChatMembersProgress, RightColumnContent } from '../../types';
 
 import { getCurrentTabId } from '../../util/establishMultitabRole';
-import { getMessageVideo, getMessageWebPageVideo } from '../helpers';
+import { getMessageVideo, getMessageWebPageVideo } from '../helpers/messageMedia';
 import { selectCurrentTextSearch } from './localSearch';
 import { selectCurrentManagement } from './management';
 import { selectIsStatisticsShown } from './statistics';
@@ -14,8 +14,15 @@ export function selectIsMediaViewerOpen<T extends GlobalState>(
   global: T,
   ...[tabId = getCurrentTabId()]: TabArgs<T>
 ) {
-  const { mediaViewer } = selectTabState(global, tabId);
-  return Boolean(mediaViewer.mediaId || mediaViewer.avatarOwnerId);
+  const {
+    mediaViewer: {
+      chatId,
+      messageId,
+      isAvatarView,
+      standaloneMedia,
+    },
+  } = selectTabState(global, tabId);
+  return Boolean(standaloneMedia || (chatId && (isAvatarView || messageId)));
 }
 
 export function selectRightColumnContentKey<T extends GlobalState>(
@@ -133,4 +140,8 @@ export function selectCanAnimateInterface<T extends GlobalState>(global: T) {
 
 export function selectIsContextMenuTranslucent<T extends GlobalState>(global: T) {
   return selectPerformanceSettingsValue(global, 'contextMenuBlur');
+}
+
+export function selectIsSynced<T extends GlobalState>(global: T) {
+  return global.isSynced;
 }

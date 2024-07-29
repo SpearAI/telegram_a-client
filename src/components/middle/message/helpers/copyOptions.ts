@@ -4,14 +4,15 @@ import { ApiMediaFormat } from '../../../../api/types';
 
 import {
   getMessageContact,
-  getMessageMediaHash,
+  getMessageHtmlId,
   getMessagePhoto,
   getMessageText,
-  getMessageTextWithSpoilers,
   getMessageWebPagePhoto,
   getMessageWebPageVideo,
-  hasMessageLocalBlobUrl,
+  getPhotoMediaHash,
+  hasMediaLocalBlobUrl,
 } from '../../../../global/helpers';
+import { getMessageTextWithSpoilers } from '../../../../global/helpers/messageSummary';
 import {
   CLIPBOARD_ITEM_SUPPORTED,
   copyHtmlToClipboard,
@@ -20,6 +21,7 @@ import {
 } from '../../../../util/clipboard';
 import getMessageIdsForSelectedText from '../../../../util/getMessageIdsForSelectedText';
 import * as mediaLoader from '../../../../util/mediaLoader';
+import { IS_SAFARI } from '../../../../util/windowEnvironment';
 import { renderMessageText } from '../../../common/helpers/renderMessageText';
 
 type ICopyOptions = {
@@ -42,9 +44,9 @@ export function getMessageCopyOptions(
   const photo = getMessagePhoto(message)
     || (!getMessageWebPageVideo(message) ? getMessageWebPagePhoto(message) : undefined);
   const contact = getMessageContact(message);
-  const mediaHash = getMessageMediaHash(message, 'inline');
-  const canImageBeCopied = canCopy && photo && (mediaHash || hasMessageLocalBlobUrl(message))
-    && CLIPBOARD_ITEM_SUPPORTED;
+  const mediaHash = photo ? getPhotoMediaHash(photo, 'inline') : undefined;
+  const canImageBeCopied = canCopy && photo && (mediaHash || hasMediaLocalBlobUrl(photo))
+    && CLIPBOARD_ITEM_SUPPORTED && !IS_SAFARI;
   const selection = window.getSelection();
 
   if (canImageBeCopied) {
@@ -76,6 +78,7 @@ export function getMessageCopyOptions(
       selection?.anchorNode?.parentNode
       && (selection.anchorNode.parentNode as HTMLElement).closest('.Message .content-inner')
       && selection.toString().replace(/(?:\r\n|\r|\n)/g, '') !== ''
+      && checkMessageHasSelection(message)
     ));
 
     options.push({
@@ -103,11 +106,7 @@ export function getMessageCopyOptions(
     options.push({
       label: 'lng_context_copy_message_link',
       icon: 'link',
-      handler: () => {
-        onCopyLink();
-
-        afterEffect?.();
-      },
+      handler: onCopyLink,
     });
   }
 
@@ -125,7 +124,12 @@ export function getMessageCopyOptions(
 
   return options;
 }
-
+function checkMessageHasSelection(message: ApiMessage): boolean {
+  const selection = window.getSelection();
+  const selectionParentNode = (selection?.anchorNode?.parentNode as HTMLElement);
+  const selectedMessageElement = selectionParentNode?.closest<HTMLDivElement>('.Message.message-list-item');
+  return getMessageHtmlId(message.id) === selectedMessageElement?.id;
+}
 function getCopyLabel(hasSelection: boolean): string {
   if (hasSelection) {
     return 'lng_context_copy_selected';

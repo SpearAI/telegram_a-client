@@ -13,7 +13,7 @@ import type { FocusDirection, ThreadId } from '../../types';
 import type { PinnedIntersectionChangedCallback } from './hooks/usePinnedMessage';
 
 import {
-  getChatTitle, getMessageHtmlId, isChatChannel, isJoinedChannelMessage,
+  getChatTitle, getMessageHtmlId, isJoinedChannelMessage,
 } from '../../global/helpers';
 import { getMessageReplyInfo } from '../../global/helpers/replies';
 import {
@@ -35,7 +35,7 @@ import useContextMenuHandlers from '../../hooks/useContextMenuHandlers';
 import useEnsureMessage from '../../hooks/useEnsureMessage';
 import useFlag from '../../hooks/useFlag';
 import { useIsIntersecting, useOnIntersect } from '../../hooks/useIntersectionObserver';
-import useLang from '../../hooks/useLang';
+import useOldLang from '../../hooks/useOldLang';
 import useShowTransition from '../../hooks/useShowTransition';
 import useFocusMessage from './message/hooks/useFocusMessage';
 
@@ -102,9 +102,11 @@ const ActionMessage: FC<OwnProps & StateProps> = ({
   observeIntersectionForPlaying,
   onPinnedIntersectionChange,
 }) => {
-  const { openPremiumModal, requestConfetti, checkGiftCode } = getActions();
+  const {
+    openPremiumModal, requestConfetti, checkGiftCode, getReceipt,
+  } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   // eslint-disable-next-line no-null/no-null
   const ref = useRef<HTMLDivElement>(null);
@@ -150,7 +152,7 @@ const ActionMessage: FC<OwnProps & StateProps> = ({
   useEffect(() => {
     if (isVisible && shouldShowConfettiRef.current) {
       shouldShowConfettiRef.current = false;
-      requestConfetti({});
+      requestConfetti({ withStars: true });
     }
   }, [isVisible, requestConfetti]);
 
@@ -210,6 +212,15 @@ const ActionMessage: FC<OwnProps & StateProps> = ({
     checkGiftCode({ slug, message: { chatId: message.chatId, messageId: message.id } });
   };
 
+  const handleClick = () => {
+    if (message.content.action?.type === 'receipt') {
+      getReceipt({
+        chatId: message.chatId,
+        messageId: message.id,
+      });
+    }
+  };
+
   // TODO Refactoring for action rendering
   const shouldSkipRender = isInsideTopic && message.content.action?.text === 'TopicWasCreatedAction';
   if (shouldSkipRender) {
@@ -257,9 +268,9 @@ const ActionMessage: FC<OwnProps & StateProps> = ({
         />
         <strong>{lang(isUnclaimed ? 'BoostingUnclaimedPrize' : 'BoostingCongratulations')}</strong>
         <span className="action-message-subtitle">
-          {renderText(lang(isFromGiveaway ? 'BoostingReceivedGiftFrom' : isUnclaimed
+          {targetChat && renderText(lang(isFromGiveaway ? 'BoostingReceivedGiftFrom' : isUnclaimed
             ? 'BoostingReceivedPrizeFrom' : 'BoostingYouHaveUnclaimedPrize',
-          getChatTitle(lang, targetChat!)),
+          getChatTitle(lang, targetChat)),
           ['simple_markdown'])}
         </span>
         <span className="action-message-subtitle">
@@ -294,7 +305,7 @@ const ActionMessage: FC<OwnProps & StateProps> = ({
       onContextMenu={handleContextMenu}
     >
       {!isSuggestedAvatar && !isGiftCode && !isJoinedMessage && (
-        <span className="action-message-content">{renderContent()}</span>
+        <span className="action-message-content" onClick={handleClick}>{renderContent()}</span>
       )}
       {isGift && renderGift()}
       {isGiftCode && renderGiftCode()}
@@ -322,7 +333,6 @@ export default memo(withGlobal<OwnProps>(
       chatId, senderId, content,
     } = message;
 
-    const userId = senderId;
     const { targetUserIds, targetChatId } = content.action || {};
     const targetMessageId = getMessageReplyInfo(message)?.replyToMsgId;
     const targetMessage = targetMessageId
@@ -335,10 +345,8 @@ export default memo(withGlobal<OwnProps>(
       noHighlight: noFocusHighlight,
     } = (isFocused && selectTabState(global).focusedMessage) || {};
 
-    const chat = selectChat(global, chatId);
-    const isChat = chat && (isChatChannel(chat) || userId === chatId);
-    const senderUser = !isChat && userId ? selectUser(global, userId) : undefined;
-    const senderChat = isChat ? chat : undefined;
+    const senderUser = selectUser(global, senderId || chatId);
+    const senderChat = selectChat(global, chatId);
 
     const targetChat = targetChatId ? selectChat(global, targetChatId) : undefined;
 

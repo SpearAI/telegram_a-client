@@ -35,6 +35,8 @@ type OwnProps = {
   withEffectOnly?: boolean;
   shouldPause?: boolean;
   shouldLoop?: boolean;
+  loopLimit?: number;
+  shouldDelayInit?: boolean;
   observeIntersection?: ObserveFn;
 };
 
@@ -64,6 +66,8 @@ const ReactionAnimatedEmoji = ({
   withEffectOnly,
   shouldPause,
   shouldLoop,
+  loopLimit,
+  shouldDelayInit,
   observeIntersection,
 }: OwnProps & StateProps) => {
   const { stopActiveReaction } = getActions();
@@ -164,7 +168,8 @@ const ReactionAnimatedEmoji = ({
           className={styles.customEmoji}
           size={size}
           noPlay={shouldPause}
-          forceAlways
+          loopLimit={loopLimit}
+          forceAlways={!shouldDelayInit}
           observeIntersectionForPlaying={observeIntersection}
         />
       )}
@@ -176,7 +181,7 @@ const ReactionAnimatedEmoji = ({
           tgsUrl={mediaDataCenterIcon}
           play={isIntersecting && !shouldPause}
           noLoop={!shouldLoop}
-          forceAlways
+          forceAlways={!shouldDelayInit}
           onLoad={markAnimationLoaded}
           onEnded={unmarkAnimationLoaded}
         />
@@ -190,7 +195,7 @@ const ReactionAnimatedEmoji = ({
             tgsUrl={mediaDataEffect}
             play={isIntersecting}
             noLoop
-            forceAlways
+            forceAlways={!shouldDelayInit}
             onEnded={handleEnded}
           />
           {isCustom && !assignedEffectId && isIntersecting && (
@@ -209,14 +214,14 @@ const ReactionAnimatedEmoji = ({
 
 export default memo(withGlobal<OwnProps>(
   (global, { containerId }) => {
-    const { availableReactions, genericEmojiEffects } = global;
+    const { genericEmojiEffects, reactions } = global;
     const { activeReactions } = selectTabState(global);
 
     const withEffects = selectPerformanceSettingsValue(global, 'reactionEffects');
 
     return {
       activeReactions: activeReactions?.[containerId],
-      availableReactions,
+      availableReactions: reactions.availableReactions,
       genericEffects: genericEmojiEffects,
       withEffects,
     };

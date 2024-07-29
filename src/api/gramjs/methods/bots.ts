@@ -33,8 +33,14 @@ import {
   buildInputThemeParams,
   generateRandomBigInt,
 } from '../gramjsBuilders';
-import { addEntitiesToLocalDb, addUserToLocalDb, deserializeBytes } from '../helpers';
-import localDb from '../localDb';
+import {
+  addDocumentToLocalDb,
+  addEntitiesToLocalDb,
+  addPhotoToLocalDb,
+  addUserToLocalDb,
+  addWebDocumentToLocalDb,
+  deserializeBytes,
+} from '../helpers';
 import { invokeRequest } from './client';
 
 let onUpdate: OnApiUpdate;
@@ -207,7 +213,7 @@ export async function requestWebView({
   if (result instanceof GramJs.WebViewResultUrl) {
     return {
       url: result.url,
-      queryId: result.queryId.toString(),
+      queryId: result.queryId?.toString(),
     };
   }
 
@@ -551,18 +557,6 @@ function processInlineBotResult(queryId: string, results: GramJs.TypeBotInlineRe
 
 function getInlineBotResultsNextOffset(username: string, nextOffset?: string) {
   return username === 'gif' && nextOffset === '0' ? '' : nextOffset;
-}
-
-function addDocumentToLocalDb(document: GramJs.Document) {
-  localDb.documents[String(document.id)] = document;
-}
-
-function addPhotoToLocalDb(photo: GramJs.Photo) {
-  localDb.photos[String(photo.id)] = photo;
-}
-
-function addWebDocumentToLocalDb(webDocument: GramJs.TypeWebDocument) {
-  localDb.webDocuments[webDocument.url] = webDocument;
 }
 
 export function setBotInfo({

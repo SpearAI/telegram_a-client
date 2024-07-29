@@ -6,16 +6,17 @@ import { getActions } from '../../global';
 
 import type { ApiAudio, ApiMessage, ApiVoice } from '../../api/types';
 import type { BufferedRange } from '../../hooks/useBuffering';
-import type { LangFn } from '../../hooks/useLang';
+import type { LangFn } from '../../hooks/useOldLang';
 import type { ISettings } from '../../types';
 import { ApiMediaFormat } from '../../api/types';
 import { AudioOrigin } from '../../types';
 
 import {
   getMediaDuration,
+  getMediaFormat,
+  getMediaHash,
   getMediaTransferState,
-  getMessageMediaFormat,
-  getMessageMediaHash,
+  getMessageWebPageAudio,
   hasMessageTtl,
   isMessageLocal,
   isOwnMessage,
@@ -23,7 +24,7 @@ import {
 import { makeTrackId } from '../../util/audioPlayer';
 import buildClassName from '../../util/buildClassName';
 import { captureEvents } from '../../util/captureEvents';
-import { formatMediaDateTime, formatMediaDuration, formatPastTimeShort } from '../../util/dateFormat';
+import { formatMediaDateTime, formatMediaDuration, formatPastTimeShort } from '../../util/dates/dateFormat';
 import { decodeWaveform, interpolateArray } from '../../util/waveform';
 import { LOCAL_TGS_URLS } from './helpers/animatedAssets';
 import { getFileSizeString } from './helpers/documentInfo';
@@ -33,17 +34,17 @@ import { MAX_EMPTY_WAVEFORM_POINTS, renderWaveform } from './helpers/waveform';
 import useAppLayout from '../../hooks/useAppLayout';
 import useAudioPlayer from '../../hooks/useAudioPlayer';
 import useBuffering from '../../hooks/useBuffering';
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
 import useMedia from '../../hooks/useMedia';
 import useMediaWithLoadProgress from '../../hooks/useMediaWithLoadProgress';
+import useOldLang from '../../hooks/useOldLang';
 import useShowTransition from '../../hooks/useShowTransition';
 
 import Button from '../ui/Button';
 import Link from '../ui/Link';
 import ProgressSpinner from '../ui/ProgressSpinner';
 import AnimatedIcon from './AnimatedIcon';
-import Icon from './Icon';
+import Icon from './icons/Icon';
 
 import './Audio.scss';
 
@@ -67,11 +68,11 @@ type OwnProps = {
   isTranscriptionError?: boolean;
   autoPlay?: boolean;
   onHideTranscription?: (isHidden: boolean) => void;
-  onPlay: (messageId: number, chatId: string) => void;
+  onPlay?: (messageId: number, chatId: string) => void;
   onPause?: NoneToVoidFunction;
   onReadMedia?: () => void;
   onCancelUpload?: () => void;
-  onDateClick?: (messageId: number, chatId: string) => void;
+  onDateClick?: (arg: ApiMessage) => void;
 };
 
 export const TINY_SCREEN_WIDTH_MQL = window.matchMedia('(max-width: 375px)');
@@ -107,45 +108,47 @@ const Audio: FC<OwnProps> = ({
   onDateClick,
 }) => {
   const {
-    cancelMessageMediaDownload, downloadMessageMedia, transcribeAudio, openOneTimeMediaModal,
+    cancelMediaDownload, downloadMedia, transcribeAudio, openOneTimeMediaModal,
   } = getActions();
 
   const {
     content: {
-      audio, voice, video,
+      audio: contentAudio, voice, video,
     }, isMediaUnread,
   } = message;
+  const audio = contentAudio || getMessageWebPageAudio(message);
+  const media = (voice || video || audio)!;
   const isVoice = Boolean(voice || video);
   const isSeeking = useRef<boolean>(false);
   // eslint-disable-next-line no-null/no-null
   const seekerRef = useRef<HTMLDivElement>(null);
-  const lang = useLang();
+  const lang = useOldLang();
   const { isRtl } = lang;
 
   const { isMobile } = useAppLayout();
   const [isActivated, setIsActivated] = useState(Boolean(autoPlay));
   const shouldLoad = isActivated || PRELOAD;
-  const coverHash = getMessageMediaHash(message, 'pictogram');
+  const coverHash = getMediaHash(media, 'pictogram');
   const coverBlobUrl = useMedia(coverHash, false, ApiMediaFormat.BlobUrl);
   const hasTtl = hasMessageTtl(message);
-  const isOneTimeModalOrigin = origin === AudioOrigin.OneTimeModal;
+  const isInOneTimeModal = origin === AudioOrigin.OneTimeModal;
   const trackType = isVoice ? (hasTtl ? 'oneTimeVoice' : 'voice') : 'audio';
 
   const mediaData = useMedia(
-    getMessageMediaHash(message, 'inline'),
+    getMediaHash(media, 'inline'),
     !shouldLoad,
-    getMessageMediaFormat(message, 'inline'),
+    getMediaFormat(media, 'inline'),
   );
 
   const { loadProgress: downloadProgress } = useMediaWithLoadProgress(
-    getMessageMediaHash(message, 'download'),
+    getMediaHash(media, 'download'),
     !isDownloading,
-    getMessageMediaFormat(message, 'download'),
+    getMediaFormat(media, 'download'),
   );
 
   const handleForcePlay = useLastCallback(() => {
     setIsActivated(true);
-    onPlay(message.id, message.chatId);
+    onPlay?.(message.id, message.chatId);
   });
 
   const handleTrackChange = useLastCallback(() => {
@@ -156,7 +159,7 @@ const Audio: FC<OwnProps> = ({
     isBuffered, bufferedRanges, bufferingHandlers, checkBuffering,
   } = useBuffering();
 
-  const noReset = isOneTimeModalOrigin;
+  const noReset = isInOneTimeModal;
   const {
     isPlaying, playProgress, playPause, setCurrentTime, duration,
   } = useAudioPlayer(
@@ -167,18 +170,19 @@ const Audio: FC<OwnProps> = ({
     bufferingHandlers,
     undefined,
     checkBuffering,
-    isActivated,
+    Boolean(isActivated || autoPlay),
     handleForcePlay,
     handleTrackChange,
     isMessageLocal(message) || hasTtl,
     undefined,
     onPause,
     noReset,
+    hasTtl && !isInOneTimeModal,
   );
 
   const reversePlayProgress = 1 - playProgress;
   const isOwn = isOwnMessage(message);
-  const isReverse = hasTtl && isOneTimeModalOrigin;
+  const isReverse = hasTtl && isInOneTimeModal;
 
   const waveformCanvasRef = useWaveformCanvas(
     theme,
@@ -201,9 +205,9 @@ const Audio: FC<OwnProps> = ({
   const {
     isUploading, isTransferring, transferProgress,
   } = getMediaTransferState(
-    message,
     uploadProgress || downloadProgress,
     isLoadingForPlaying || isDownloading,
+    uploadProgress !== undefined,
   );
 
   const {
@@ -220,14 +224,13 @@ const Audio: FC<OwnProps> = ({
     }
 
     if (hasTtl) {
-      // Set new date to prevent saving state of the track
-      openOneTimeMediaModal({ message: { ...message, date: Date.now() } });
+      openOneTimeMediaModal({ message });
       onReadMedia?.();
       return;
     }
 
     if (!isPlaying) {
-      onPlay(message.id, message.chatId);
+      onPlay?.(message.id, message.chatId);
     }
 
     getActions().setAudioPlayerOrigin({ origin });
@@ -243,9 +246,9 @@ const Audio: FC<OwnProps> = ({
 
   const handleDownloadClick = useLastCallback(() => {
     if (isDownloading) {
-      cancelMessageMediaDownload({ message });
+      cancelMediaDownload({ media });
     } else {
-      downloadMessageMedia({ message });
+      downloadMedia({ media });
     }
   });
 
@@ -270,7 +273,7 @@ const Audio: FC<OwnProps> = ({
   });
 
   const handleDateClick = useLastCallback(() => {
-    onDateClick!(message.id, message.chatId);
+    onDateClick!(message);
   });
 
   const handleTranscribe = useLastCallback(() => {
@@ -278,14 +281,14 @@ const Audio: FC<OwnProps> = ({
   });
 
   useEffect(() => {
-    if (!seekerRef.current || !withSeekline || isOneTimeModalOrigin) return undefined;
+    if (!seekerRef.current || !withSeekline || isInOneTimeModal) return undefined;
     return captureEvents(seekerRef.current, {
       onCapture: handleStartSeek,
       onRelease: handleStopSeek,
       onClick: handleStopSeek,
       onDrag: handleSeek,
     });
-  }, [withSeekline, handleStartSeek, handleSeek, handleStopSeek, isOneTimeModalOrigin]);
+  }, [withSeekline, handleStartSeek, handleSeek, handleStopSeek, isInOneTimeModal]);
 
   function renderFirstLine() {
     if (isVoice) {
@@ -322,14 +325,14 @@ const Audio: FC<OwnProps> = ({
   const fullClassName = buildClassName(
     'Audio',
     className,
-    isOneTimeModalOrigin && 'non-interactive',
+    isInOneTimeModal && 'non-interactive',
     origin === AudioOrigin.Inline && 'inline',
     isOwn && origin === AudioOrigin.Inline && 'own',
     (origin === AudioOrigin.Search || origin === AudioOrigin.SharedMedia) && 'bigger',
     isSelected && 'audio-is-selected',
   );
 
-  const buttonClassNames = ['toggle-play'];
+  const buttonClassNames = ['toogle-play-wrapper'];
   if (shouldRenderCross) {
     buttonClassNames.push('loading');
   } else {
@@ -371,22 +374,22 @@ const Audio: FC<OwnProps> = ({
 
   function renderTooglePlayWrapper() {
     return (
-      <div className="toogle-play-wrapper">
+      <div className={buildClassName(...buttonClassNames)}>
         <Button
           round
           ripple={!isMobile}
           size="smaller"
+          className="toggle-play"
           color={coverBlobUrl ? 'translucent-white' : 'primary'}
-          className={buttonClassNames.join(' ')}
           ariaLabel={isPlaying ? 'Pause audio' : 'Play audio'}
           onClick={handleButtonClick}
           isRtl={lang.isRtl}
           backgroundImage={coverBlobUrl}
-          nonInteractive={isOneTimeModalOrigin}
+          nonInteractive={isInOneTimeModal}
         >
-          {!isOneTimeModalOrigin && <Icon name="play" />}
-          {!isOneTimeModalOrigin && <Icon name="pause" />}
-          {isOneTimeModalOrigin && (
+          {!isInOneTimeModal && <Icon name="play" />}
+          {!isInOneTimeModal && <Icon name="pause" />}
+          {isInOneTimeModal && (
             <AnimatedIcon
               className="flame"
               tgsUrl={LOCAL_TGS_URLS.Flame}
@@ -396,7 +399,7 @@ const Audio: FC<OwnProps> = ({
             />
           )}
         </Button>
-        {hasTtl && !isOneTimeModalOrigin && (
+        {hasTtl && !isInOneTimeModal && (
           <Icon name="view-once" />
         )}
       </div>
@@ -423,7 +426,7 @@ const Audio: FC<OwnProps> = ({
           />
         </div>
       )}
-      {isOneTimeModalOrigin && !shouldRenderSpinner && (
+      {isInOneTimeModal && !shouldRenderSpinner && (
         <div className={buildClassName('media-loading')}>
           <ProgressSpinner
             progress={playProgress}
@@ -460,7 +463,7 @@ const Audio: FC<OwnProps> = ({
         onDateClick ? handleDateClick : undefined,
       )}
       {origin === AudioOrigin.SharedMedia && (voice || video) && renderWithTitle()}
-      {(origin === AudioOrigin.Inline || isOneTimeModalOrigin) && voice && (
+      {(origin === AudioOrigin.Inline || isInOneTimeModal) && voice && (
         renderVoice(
           voice,
           seekerRef,

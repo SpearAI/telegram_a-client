@@ -11,27 +11,30 @@ import type { StickerSetOrReactionsSetOrRecent } from '../../types';
 import {
   DEFAULT_STATUS_ICON_ID,
   DEFAULT_TOPIC_ICON_STICKER_ID,
+  EFFECT_EMOJIS_SET_ID,
+  EFFECT_STICKERS_SET_ID,
   EMOJI_SIZE_PICKER,
   FAVORITE_SYMBOL_SET_ID,
   POPULAR_SYMBOL_SET_ID,
   RECENT_SYMBOL_SET_ID,
   STICKER_SIZE_PICKER,
 } from '../../config';
-import { getReactionUniqueKey } from '../../global/helpers';
+import { getReactionKey } from '../../global/helpers';
 import { selectIsAlwaysHighPriorityEmoji, selectIsSetPremium } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
 
 import useAppLayout from '../../hooks/useAppLayout';
 import useFlag from '../../hooks/useFlag';
 import { useIsIntersecting } from '../../hooks/useIntersectionObserver';
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
 import useMediaTransition from '../../hooks/useMediaTransition';
+import useOldLang from '../../hooks/useOldLang';
 import useResizeObserver from '../../hooks/useResizeObserver';
 import useWindowSize from '../../hooks/window/useWindowSize';
 
 import Button from '../ui/Button';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import Icon from './icons/Icon';
 import ReactionEmoji from './ReactionEmoji';
 import StickerButton from './StickerButton';
 
@@ -52,6 +55,8 @@ type OwnProps = {
   selectedReactionIds?: string[];
   withDefaultTopicIcon?: boolean;
   withDefaultStatusIcon?: boolean;
+  isChatEmojiSet?: boolean;
+  isChatStickerSet?: boolean;
   isTranslucent?: boolean;
   noContextMenus?: boolean;
   forcePlayback?: boolean;
@@ -91,6 +96,8 @@ const StickerSet: FC<OwnProps> = ({
   withDefaultTopicIcon,
   selectedReactionIds,
   withDefaultStatusIcon,
+  isChatEmojiSet,
+  isChatStickerSet,
   isTranslucent,
   noContextMenus,
   forcePlayback,
@@ -123,7 +130,7 @@ const StickerSet: FC<OwnProps> = ({
   // eslint-disable-next-line no-null/no-null
   const sharedCanvasHqRef = useRef<HTMLCanvasElement>(null);
 
-  const lang = useLang();
+  const lang = useOldLang();
   const { width: windowWidth } = useWindowSize();
   const [isConfirmModalOpen, openConfirmModal, closeConfirmModal] = useFlag();
   const { isMobile } = useAppLayout();
@@ -170,6 +177,7 @@ const StickerSet: FC<OwnProps> = ({
 
   const handleDefaultTopicIconClick = useLastCallback(() => {
     onStickerSelect?.({
+      mediaType: 'sticker',
       id: DEFAULT_TOPIC_ICON_STICKER_ID,
       isLottie: false,
       isVideo: false,
@@ -181,6 +189,7 @@ const StickerSet: FC<OwnProps> = ({
 
   const handleDefaultStatusIconClick = useLastCallback(() => {
     onStickerSelect?.({
+      mediaType: 'sticker',
       id: DEFAULT_STATUS_ICON_ID,
       isLottie: false,
       isVideo: false,
@@ -224,10 +233,14 @@ const StickerSet: FC<OwnProps> = ({
     }
   }, [shouldRender, loadStickers, stickerSet]);
 
-  const isLocked = !isSavedMessages && !isCurrentUserPremium && isPremiumSet;
+  const isLocked = !isSavedMessages && !isCurrentUserPremium && isPremiumSet && !isChatEmojiSet;
 
   const isInstalled = stickerSet.installedDate && !stickerSet.isArchived;
-  const canCut = !isInstalled && stickerSet.id !== RECENT_SYMBOL_SET_ID && stickerSet.id !== POPULAR_SYMBOL_SET_ID;
+
+  const canCut = !isInstalled && stickerSet.id !== RECENT_SYMBOL_SET_ID
+    && stickerSet.id !== POPULAR_SYMBOL_SET_ID && stickerSet.id !== EFFECT_EMOJIS_SET_ID
+    && stickerSet.id !== EFFECT_STICKERS_SET_ID && !isChatEmojiSet && !isChatStickerSet;
+
   const [isCut, , expand] = useFlag(canCut);
   const itemsBeforeCutout = itemsPerRow * 3 - 1;
   const totalItemsCount = withDefaultTopicIcon ? stickerSet.count + 1 : stickerSet.count;
@@ -240,7 +253,7 @@ const StickerSet: FC<OwnProps> = ({
   const favoriteStickerIdsSet = useMemo(() => (
     favoriteStickers ? new Set(favoriteStickers.map(({ id }) => id)) : undefined
   ), [favoriteStickers]);
-  const withAddSetButton = !shouldHideHeader && !isRecent && isEmoji && !isPopular
+  const withAddSetButton = !shouldHideHeader && !isRecent && isEmoji && !isPopular && !isChatEmojiSet
     && (!isInstalled || (!isCurrentUserPremium && !isSavedMessages));
   const addSetButtonText = useMemo(() => {
     if (isLocked) {
@@ -262,9 +275,12 @@ const StickerSet: FC<OwnProps> = ({
     >
       {!shouldHideHeader && (
         <div className="symbol-set-header">
-          <p className={buildClassName('symbol-set-name', withAddSetButton && 'symbol-set-name-external')}>
-            {isLocked && <i className="symbol-set-locked-icon icon icon-lock-badge" />}
-            {stickerSet.title}
+          <p className={buildClassName('symbol-set-title', withAddSetButton && 'symbol-set-title-external')}>
+            {isLocked && <Icon name="lock-badge" className="symbol-set-locked-icon" />}
+            <span className="symbol-set-name">{stickerSet.title}</span>
+            {(isChatEmojiSet || isChatStickerSet) && (
+              <span className="symbol-set-chat">{lang(isChatEmojiSet ? 'GroupEmoji' : 'GroupStickers')}</span>
+            )}
             {withAddSetButton && Boolean(stickerSet.stickers) && (
               <span className="symbol-set-amount">
                 {lang(isEmoji ? 'EmojiCount' : 'Stickers', stickerSet.stickers.length, 'i')}
@@ -272,7 +288,7 @@ const StickerSet: FC<OwnProps> = ({
             )}
           </p>
           {isRecent && (
-            <i className="symbol-set-remove icon icon-close" onClick={openConfirmModal} />
+            <Icon className="symbol-set-remove" name="close" onClick={openConfirmModal} />
           )}
           {withAddSetButton && (
             <Button
@@ -289,7 +305,11 @@ const StickerSet: FC<OwnProps> = ({
         </div>
       )}
       <div
-        className={buildClassName('symbol-set-container shared-canvas-container', transitionClassNames)}
+        className={buildClassName(
+          'symbol-set-container shared-canvas-container',
+          transitionClassNames,
+          stickerSet.id === EFFECT_EMOJIS_SET_ID && 'effect-emojis',
+        )}
         style={`height: ${height}px;`}
       >
         <canvas
@@ -315,11 +335,11 @@ const StickerSet: FC<OwnProps> = ({
             onClick={handleDefaultStatusIconClick}
             key="default-status-icon"
           >
-            <i className="icon icon-premium" />
+            <Icon name="star" />
           </Button>
         )}
         {shouldRender && stickerSet.reactions?.map((reaction) => {
-          const reactionId = getReactionUniqueKey(reaction);
+          const reactionId = getReactionKey(reaction);
           const isSelected = reactionId ? selectedReactionIds?.includes(reactionId) : undefined;
 
           return (
@@ -360,6 +380,7 @@ const StickerSet: FC<OwnProps> = ({
                 canViewSet
                 noContextMenu={noContextMenus}
                 isCurrentUserPremium={isCurrentUserPremium}
+                shouldIgnorePremium={isChatEmojiSet}
                 sharedCanvasRef={canvasRef}
                 withTranslucentThumb={isTranslucent}
                 onClick={onStickerSelect}
@@ -372,6 +393,9 @@ const StickerSet: FC<OwnProps> = ({
                 onContextMenuClose={onContextMenuClose}
                 onContextMenuClick={onContextMenuClick}
                 forcePlayback={forcePlayback}
+                isEffectEmoji={stickerSet.id === EFFECT_EMOJIS_SET_ID}
+                noShowPremium={isCurrentUserPremium
+                  && (stickerSet.id === EFFECT_STICKERS_SET_ID || stickerSet.id === EFFECT_EMOJIS_SET_ID)}
               />
             );
           })}

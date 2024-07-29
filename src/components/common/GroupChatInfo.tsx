@@ -5,7 +5,7 @@ import { getActions, withGlobal } from '../../global';
 import type {
   ApiChat, ApiThreadInfo, ApiTopic, ApiTypingStatus, ApiUser,
 } from '../../api/types';
-import type { LangFn } from '../../hooks/useLang';
+import type { LangFn } from '../../hooks/useOldLang';
 import type { IconName } from '../../types/icons';
 import { MediaViewerOrigin, type StoryViewerOrigin, type ThreadId } from '../../types';
 
@@ -26,13 +26,14 @@ import buildClassName from '../../util/buildClassName';
 import { REM } from './helpers/mediaDimensions';
 import renderText from './helpers/renderText';
 
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 
+import Transition from '../ui/Transition';
 import Avatar from './Avatar';
 import DotAnimation from './DotAnimation';
 import FullNameTitle from './FullNameTitle';
-import Icon from './Icon';
+import Icon from './icons/Icon';
 import TopicIcon from './TopicIcon';
 import TypingStatus from './TypingStatus';
 
@@ -111,7 +112,7 @@ const GroupChatInfo: FC<OwnProps & StateProps> = ({
     loadProfilePhotos,
   } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const isSuperGroup = chat && isChatSuperGroup(chat);
   const isTopic = Boolean(chat?.isForum && threadInfo && topic);
@@ -129,8 +130,9 @@ const GroupChatInfo: FC<OwnProps & StateProps> = ({
       if (chat && hasMedia) {
         e.stopPropagation();
         openMediaViewer({
-          avatarOwnerId: chat.id,
-          mediaId: 0,
+          isAvatarView: true,
+          chatId: chat.id,
+          mediaIndex: 0,
           origin: avatarSize === 'jumbo' ? MediaViewerOrigin.ProfileAvatar : MediaViewerOrigin.MiddleHeaderAvatar,
         });
       }
@@ -172,7 +174,14 @@ const GroupChatInfo: FC<OwnProps & StateProps> = ({
     if (isTopic) {
       return (
         <span className="status" dir="auto">
-          {messagesCount ? lang('messages', messagesCount, 'i') : renderText(chat.title)}
+          <Transition
+            name="fade"
+            shouldRestoreHeight
+            activeKey={messagesCount !== undefined ? 1 : 2}
+            className="message-count-transition"
+          >
+            {messagesCount !== undefined && lang('messages', messagesCount, 'i')}
+          </Transition>
         </span>
       );
     }

@@ -11,8 +11,8 @@ import {
 import { APP_CONFIG_REFETCH_INTERVAL, COUNTRIES_WITH_12H_TIME_FORMAT } from '../../../config';
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
 import { buildCollectionByKey } from '../../../util/iteratees';
-import { setTimeFormat } from '../../../util/langProvider';
 import { requestPermission, subscribe, unsubscribe } from '../../../util/notifications';
+import { setTimeFormat } from '../../../util/oldLangProvider';
 import requestActionTimeout from '../../../util/requestActionTimeout';
 import { getServerTime } from '../../../util/serverTime';
 import { callApi } from '../../../api/gramjs';
@@ -221,6 +221,7 @@ addActionHandler('uploadWallpaper', async (global, actions, payload): Promise<vo
         {
           slug: UPLOADING_WALLPAPER_SLUG,
           document: {
+            mediaType: 'document',
             fileName: '',
             size: file.size,
             mimeType: file.type,
@@ -421,6 +422,7 @@ addActionHandler('loadPrivacySettings', async (global): Promise<void> => {
     callApi('fetchPrivacySettings', 'phoneP2P'),
     callApi('fetchPrivacySettings', 'voiceMessages'),
     callApi('fetchPrivacySettings', 'bio'),
+    callApi('fetchPrivacySettings', 'birthday'),
   ]);
 
   if (result.some((e) => e === undefined)) {
@@ -438,6 +440,7 @@ addActionHandler('loadPrivacySettings', async (global): Promise<void> => {
     phoneP2PSettings,
     voiceMessagesSettings,
     bioSettings,
+    birthdaySettings,
   ] = result as {
     users: ApiUser[];
     rules: ApiPrivacySettings;
@@ -463,6 +466,7 @@ addActionHandler('loadPrivacySettings', async (global): Promise<void> => {
         phoneP2P: phoneP2PSettings.rules,
         voiceMessages: voiceMessagesSettings.rules,
         bio: bioSettings.rules,
+        birthday: birthdaySettings.rules,
       },
     },
   };
@@ -470,7 +474,28 @@ addActionHandler('loadPrivacySettings', async (global): Promise<void> => {
 });
 
 addActionHandler('setPrivacyVisibility', async (global, actions, payload): Promise<void> => {
-  const { privacyKey, visibility } = payload!;
+  const { privacyKey, visibility, onSuccess } = payload!;
+
+  if (!global.settings.privacy[privacyKey]) {
+    const result = await callApi('fetchPrivacySettings', privacyKey);
+    if (!result) {
+      return;
+    }
+
+    global = getGlobal();
+    global = addUsers(global, buildCollectionByKey(result.users, 'id'));
+    global = {
+      ...global,
+      settings: {
+        ...global.settings,
+        privacy: {
+          ...global.settings.privacy,
+          [privacyKey]: result.rules,
+        },
+      },
+    };
+    setGlobal(global);
+  }
 
   const {
     privacy: { [privacyKey]: settings },
@@ -491,6 +516,8 @@ addActionHandler('setPrivacyVisibility', async (global, actions, payload): Promi
     return;
   }
 
+  onSuccess?.();
+
   global = getGlobal();
   global = addUsers(global, buildCollectionByKey(result.users, 'id'));
   global = {
@@ -507,7 +534,9 @@ addActionHandler('setPrivacyVisibility', async (global, actions, payload): Promi
 });
 
 addActionHandler('setPrivacySettings', async (global, actions, payload): Promise<void> => {
-  const { privacyKey, isAllowList, updatedIds } = payload!;
+  const {
+    privacyKey, isAllowList, updatedIds, isPremiumAllowed,
+  } = payload!;
   const {
     privacy: { [privacyKey]: settings },
   } = global.settings;
@@ -519,6 +548,7 @@ addActionHandler('setPrivacySettings', async (global, actions, payload): Promise
   const rules = buildApiInputPrivacyRules(global, {
     visibility: settings.visibility,
     isUnspecified: settings.isUnspecified,
+    shouldAllowPremium: isPremiumAllowed,
     allowedIds: isAllowList ? updatedIds : [...settings.allowUserIds, ...settings.allowChatIds],
     blockedIds: !isAllowList ? updatedIds : [...settings.blockUserIds, ...settings.blockChatIds],
   });
@@ -659,6 +689,22 @@ addActionHandler('loadPeerColors', async (global): Promise<void> => {
   setGlobal(global);
 });
 
+addActionHandler('loadTimezones', async (global): Promise<void> => {
+  const hash = global.timezones?.hash;
+  const result = await callApi('fetchTimezones', hash);
+  if (!result) return;
+
+  global = getGlobal();
+  global = {
+    ...global,
+    timezones: {
+      byId: buildCollectionByKey(result.timezones, 'id'),
+      hash: result.hash,
+    },
+  };
+  setGlobal(global);
+});
+
 addActionHandler('loadGlobalPrivacySettings', async (global): Promise<void> => {
   const globalSettings = await callApi('fetchGlobalPrivacySettings');
   if (!globalSettings) {
@@ -666,24 +712,35 @@ addActionHandler('loadGlobalPrivacySettings', async (global): Promise<void> => {
   }
 
   global = getGlobal();
-  global = replaceSettings(global, {
-    shouldArchiveAndMuteNewNonContact: globalSettings.shouldArchiveAndMuteNewNonContact,
-  });
+  global = replaceSettings(global, { ...globalSettings });
   setGlobal(global);
 });
 
 addActionHandler('updateGlobalPrivacySettings', async (global, actions, payload): Promise<void> => {
-  const { shouldArchiveAndMuteNewNonContact } = payload;
-  global = replaceSettings(global, { shouldArchiveAndMuteNewNonContact });
+  const shouldArchiveAndMuteNewNonContact = payload.shouldArchiveAndMuteNewNonContact
+    ?? Boolean(global.settings.byKey.shouldArchiveAndMuteNewNonContact);
+  const shouldHideReadMarks = payload.shouldHideReadMarks ?? Boolean(global.settings.byKey.shouldHideReadMarks);
+  const shouldNewNonContactPeersRequirePremium = payload.shouldNewNonContactPeersRequirePremium
+    ?? Boolean(global.settings.byKey.shouldNewNonContactPeersRequirePremium);
+
+  global = replaceSettings(global, { shouldArchiveAndMuteNewNonContact, shouldHideReadMarks });
   setGlobal(global);
 
-  const result = await callApi('updateGlobalPrivacySettings', { shouldArchiveAndMuteNewNonContact });
+  const result = await callApi('updateGlobalPrivacySettings', {
+    shouldArchiveAndMuteNewNonContact,
+    shouldHideReadMarks,
+    shouldNewNonContactPeersRequirePremium,
+  });
 
   global = getGlobal();
   global = replaceSettings(global, {
     shouldArchiveAndMuteNewNonContact: !result
       ? !shouldArchiveAndMuteNewNonContact
       : result.shouldArchiveAndMuteNewNonContact,
+    shouldHideReadMarks: !result ? !shouldHideReadMarks : result.shouldHideReadMarks,
+    shouldNewNonContactPeersRequirePremium: !result
+      ? !shouldNewNonContactPeersRequirePremium
+      : result.shouldNewNonContactPeersRequirePremium,
   });
   setGlobal(global);
 });

@@ -1,6 +1,6 @@
 import type { ApiPrivacySettings } from '../../types';
 import type {
-  ApiGeoPoint, ApiMessage, ApiReaction, ApiReactionCount, ApiStoryForwardInfo, MediaContent,
+  ApiGeoPoint, ApiMessage, ApiReaction, ApiReactionCount, ApiSticker, ApiStoryForwardInfo, MediaContent,
 } from './messages';
 
 export interface ApiStory {
@@ -10,7 +10,7 @@ export interface ApiStory {
   date: number;
   expireDate: number;
   content: MediaContent;
-  isPinned?: boolean;
+  isInProfile?: boolean;
   isEdited?: boolean;
   isForCloseFriends?: boolean;
   isForContacts?: boolean;
@@ -23,9 +23,11 @@ export interface ApiStory {
   sentReaction?: ApiReaction;
   mediaAreas?: ApiMediaArea[];
   forwardInfo?: ApiStoryForwardInfo;
+  fromId?: string;
 }
 
 export interface ApiStoryViews {
+  hasViewers?: true;
   viewsCount?: number;
   forwardsCount?: number;
   reactionsCount?: number;
@@ -54,13 +56,17 @@ export type ApiTypeStory = ApiStory | ApiStorySkipped | ApiStoryDeleted;
 export type ApiPeerStories = {
   byId: Record<number, ApiTypeStory>;
   orderedIds: number[]; // Actual peer stories
-  pinnedIds: number[]; // Profile Shared Media: Pinned Stories tab
+  profileIds: number[]; // Profile Shared Media: Profile Stories tab
+  isFullyLoaded?: boolean;
+  pinnedIds?: number[]; // Profile Shared Media: Pinned profile stories
   archiveIds?: number[]; // Profile Shared Media: Archive Stories tab
+  isArchiveFullyLoaded?: boolean;
   lastUpdatedAt?: number;
   lastReadId?: number;
 };
 
 export type ApiMessageStoryData = {
+  mediaType: 'storyData';
   id: number;
   peerId: string;
   isMention?: boolean;
@@ -69,6 +75,12 @@ export type ApiMessageStoryData = {
 export type ApiWebPageStoryData = {
   id: number;
   peerId: string;
+};
+
+export type ApiWebPageStickerData = {
+  documents: ApiSticker[];
+  isEmoji?: boolean;
+  isWithTextColor?: boolean;
 };
 
 export type ApiStoryViewPublicForward = {
@@ -113,6 +125,7 @@ export type ApiMediaAreaCoordinates = {
   width: number;
   height: number;
   rotation: number;
+  radius?: number;
 };
 
 export type ApiMediaAreaVenue = {
@@ -143,5 +156,11 @@ export type ApiMediaAreaChannelPost = {
   messageId: number;
 };
 
+export type ApiMediaAreaUrl = {
+  type: 'url';
+  coordinates: ApiMediaAreaCoordinates;
+  url: string;
+};
+
 export type ApiMediaArea = ApiMediaAreaVenue | ApiMediaAreaGeoPoint | ApiMediaAreaSuggestedReaction
-| ApiMediaAreaChannelPost;
+| ApiMediaAreaChannelPost | ApiMediaAreaUrl;

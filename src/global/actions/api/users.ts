@@ -4,7 +4,7 @@ import { ManagementProgress } from '../../../types';
 
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
 import { buildCollectionByKey, unique } from '../../../util/iteratees';
-import * as langProvider from '../../../util/langProvider';
+import * as langProvider from '../../../util/oldLangProvider';
 import { throttle } from '../../../util/schedulers';
 import { getServerTime } from '../../../util/serverTime';
 import { callApi } from '../../../api/gramjs';
@@ -21,6 +21,7 @@ import {
   closeNewContactDialog,
   replaceUserStatuses,
   updateChat,
+  updateChats,
   updateManagementProgress,
   updateUser,
   updateUserFullInfo,
@@ -29,7 +30,7 @@ import {
   updateUserSearchFetchingStatus,
 } from '../../reducers';
 import {
-  selectChat, selectCurrentMessageList, selectPeer, selectTabState, selectUser, selectUserFullInfo,
+  selectChat, selectChatFullInfo, selectCurrentMessageList, selectPeer, selectTabState, selectUser, selectUserFullInfo,
 } from '../../selectors';
 
 const TOP_PEERS_REQUEST_COOLDOWN = 60; // 1 min
@@ -60,6 +61,9 @@ addActionHandler('loadFullUser', async (global, actions, payload): Promise<void>
 
   global = updateUser(global, userId, result.user);
   global = updateUserFullInfo(global, userId, result.fullInfo);
+  global = updateUsers(global, buildCollectionByKey(result.users, 'id'));
+  global = updateChats(global, buildCollectionByKey(result.chats, 'id'));
+
   setGlobal(global);
   if (withPhotos || (user.photos?.length && hasChangedPhoto)) {
     actions.loadProfilePhotos({ profileId: userId });
@@ -257,8 +261,9 @@ addActionHandler('loadProfilePhotos', async (global, actions, payload): Promise<
     return;
   }
 
-  let fullInfo = selectUserFullInfo(global, profileId);
-  if (user && !fullInfo?.profilePhoto) {
+  let userFullInfo = selectUserFullInfo(global, profileId);
+  let chatFullInfo = selectChatFullInfo(global, profileId);
+  if (user && !userFullInfo?.profilePhoto) {
     const { id, accessHash } = user;
     const result = await callApi('fetchFullUser', { id, accessHash });
     if (!result?.user) {
@@ -266,7 +271,16 @@ addActionHandler('loadProfilePhotos', async (global, actions, payload): Promise<
     }
 
     user = result.user;
-    fullInfo = result.fullInfo;
+    userFullInfo = result.fullInfo;
+  }
+
+  if (chat && !chatFullInfo?.profilePhoto) {
+    const result = await callApi('fetchFullChat', chat);
+    if (!result?.fullInfo) {
+      return;
+    }
+
+    chatFullInfo = result.fullInfo;
   }
 
   const result = await callApi('fetchProfilePhotos', user, chat);
@@ -279,10 +293,12 @@ addActionHandler('loadProfilePhotos', async (global, actions, payload): Promise<
   const userOrChat = user || chat;
   const { photos, users } = result;
 
-  const fallbackPhoto = fullInfo?.fallbackPhoto;
-  const personalPhoto = fullInfo?.personalPhoto;
+  const fallbackPhoto = userFullInfo?.fallbackPhoto;
+  const personalPhoto = userFullInfo?.personalPhoto;
+  const chatCurrentPhoto = chatFullInfo?.profilePhoto;
   if (fallbackPhoto) photos.push(fallbackPhoto);
   if (personalPhoto) photos.unshift(personalPhoto);
+  if (chatCurrentPhoto && photos[0]?.id !== chatCurrentPhoto.id) photos.unshift(chatCurrentPhoto);
 
   photos.sort((a) => (a.id === userOrChat?.avatarHash ? -1 : 1));
 
@@ -314,18 +330,15 @@ addActionHandler('setUserSearchQuery', (global, actions, payload): ActionReturnT
       return;
     }
 
-    const { accountUsers, globalUsers } = result;
+    const {
+      users, chats, accountResultIds, globalResultIds,
+    } = result;
 
-    let localUserIds;
-    let globalUserIds;
-    if (accountUsers.length) {
-      global = addUsers(global, buildCollectionByKey(accountUsers, 'id'));
-      localUserIds = accountUsers.map(({ id }) => id);
-    }
-    if (globalUsers.length) {
-      global = addUsers(global, buildCollectionByKey(globalUsers, 'id'));
-      globalUserIds = globalUsers.map(({ id }) => id);
-    }
+    global = addUsers(global, buildCollectionByKey(users, 'id'));
+    global = addChats(global, buildCollectionByKey(chats, 'id'));
+
+    const localUserIds = accountResultIds.filter(isUserId);
+    const globalUserIds = globalResultIds.filter(isUserId);
 
     global = updateUserSearchFetchingStatus(global, false, tabId);
     global = updateUserSearch(global, { localUserIds, globalUserIds }, tabId);
@@ -343,7 +356,7 @@ addActionHandler('importContact', async (global, actions, payload): Promise<void
   const result = await callApi('importContact', { phone, firstName, lastName });
   if (!result) {
     actions.showNotification({
-      message: langProvider.translate('Contacts.PhoneNumber.NotRegistred'),
+      message: langProvider.oldTranslate('Contacts.PhoneNumber.NotRegistred'),
       tabId,
     });
 

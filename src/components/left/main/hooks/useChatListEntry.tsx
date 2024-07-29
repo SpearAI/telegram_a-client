@@ -8,7 +8,7 @@ import type {
 } from '../../../../api/types';
 import type { ApiDraft } from '../../../../global/types';
 import type { ObserveFn } from '../../../../hooks/useIntersectionObserver';
-import type { LangFn } from '../../../../hooks/useLang';
+import type { LangFn } from '../../../../hooks/useOldLang';
 
 import { ANIMATION_END_DELAY, CHAT_HEIGHT_PX } from '../../../../config';
 import { requestMutation } from '../../../../lib/fasterdom/fasterdom';
@@ -33,8 +33,8 @@ import { renderTextWithEntities } from '../../../common/helpers/renderTextWithEn
 import { ChatAnimationTypes } from './useChatAnimationType';
 
 import useEnsureMessage from '../../../../hooks/useEnsureMessage';
-import useLang from '../../../../hooks/useLang';
 import useMedia from '../../../../hooks/useMedia';
+import useOldLang from '../../../../hooks/useOldLang';
 
 import ChatForumLastMessage from '../../../common/ChatForumLastMessage';
 import MessageSummary from '../../../common/MessageSummary';
@@ -59,6 +59,7 @@ export default function useChatListEntry({
   withInterfaceAnimations,
   isTopic,
   isSavedDialog,
+  isPreview,
 }: {
   chat?: ApiChat;
   lastMessage?: ApiMessage;
@@ -73,12 +74,13 @@ export default function useChatListEntry({
   observeIntersection?: ObserveFn;
   isTopic?: boolean;
   isSavedDialog?: boolean;
+  isPreview?: boolean;
 
   animationType: ChatAnimationTypes;
   orderDiff: number;
   withInterfaceAnimations?: boolean;
 }) {
-  const lang = useLang();
+  const lang = useOldLang();
   // eslint-disable-next-line no-null/no-null
   const ref = useRef<HTMLDivElement>(null);
 
@@ -87,10 +89,10 @@ export default function useChatListEntry({
   const replyToMessageId = lastMessage && getMessageReplyInfo(lastMessage)?.replyToMsgId;
   useEnsureMessage(chatId, isAction ? replyToMessageId : undefined, actionTargetMessage);
 
-  const mediaThumbnail = lastMessage && !getMessageSticker(lastMessage)
-    ? getMessageMediaThumbDataUri(lastMessage)
-    : undefined;
-  const mediaBlobUrl = useMedia(lastMessage ? getMessageMediaHash(lastMessage, 'micro') : undefined);
+  const mediaHasPreview = lastMessage && !getMessageSticker(lastMessage);
+
+  const mediaThumbnail = mediaHasPreview ? getMessageMediaThumbDataUri(lastMessage) : undefined;
+  const mediaBlobUrl = useMedia(mediaHasPreview ? getMessageMediaHash(lastMessage, 'micro') : undefined);
   const isRoundVideo = Boolean(lastMessage && getMessageRoundVideo(lastMessage));
 
   const actionTargetUsers = useMemo(() => {
@@ -104,14 +106,15 @@ export default function useChatListEntry({
   }, [actionTargetUserIds]);
 
   const renderLastMessageOrTyping = useCallback(() => {
-    if (!isSavedDialog && typingStatus && lastMessage && typingStatus.timestamp > lastMessage.date * 1000) {
+    if (!isSavedDialog && !isPreview
+        && typingStatus && lastMessage && typingStatus.timestamp > lastMessage.date * 1000) {
       return <TypingStatus typingStatus={typingStatus} />;
     }
 
     const isDraftReplyToTopic = draft && draft.replyInfo?.replyToMsgId === lastMessageTopic?.id;
     const isEmptyLocalReply = draft?.replyInfo && !draft.text && draft.isLocal;
 
-    const canDisplayDraft = !chat?.isForum && !isSavedDialog && draft && !isEmptyLocalReply
+    const canDisplayDraft = !chat?.isForum && !isSavedDialog && !isPreview && draft && !isEmptyLocalReply
       && (!isTopic || !isDraftReplyToTopic);
 
     if (canDisplayDraft) {
@@ -180,7 +183,7 @@ export default function useChatListEntry({
   }, [
     actionTargetChatId, actionTargetMessage, actionTargetUsers, chat, chatId, draft, isAction,
     isRoundVideo, isTopic, lang, lastMessage, lastMessageSender, lastMessageTopic, mediaBlobUrl, mediaThumbnail,
-    observeIntersection, typingStatus, isSavedDialog,
+    observeIntersection, typingStatus, isSavedDialog, isPreview,
   ]);
 
   function renderSubtitle() {

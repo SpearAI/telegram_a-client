@@ -7,9 +7,11 @@ function compatTest() {
   var hasCssSupports = window.CSS && typeof window.CSS.supports === 'function';
   var hasIntl = typeof window.Intl !== 'undefined';
   var hasDisplayNames = hasIntl && typeof Intl.DisplayNames !== 'undefined';
+  var hasPluralRules = hasIntl && typeof Intl.PluralRules !== 'undefined';
+  var hasNumberFormat = hasIntl && typeof Intl.NumberFormat !== 'undefined';
 
   var isCompatible = hasPromise && hasWebSockets && hasWebCrypto && hasObjectFromEntries && hasResizeObserver
-    && hasCssSupports && hasDisplayNames;
+    && hasCssSupports && hasDisplayNames && hasPluralRules && hasNumberFormat;
 
   if (isCompatible || (window.localStorage && window.localStorage.getItem('tt-ignore-compat'))) {
     window.isCompatTestPassed = true;
@@ -25,9 +27,25 @@ function compatTest() {
     console.warn('ResizeObserver', hasResizeObserver);
     console.warn('CSS.supports', hasCssSupports);
     console.warn('Intl.DisplayNames', hasDisplayNames);
+    console.warn('Intl.PluralRules', hasPluralRules);
+    console.warn('Intl.NumberFormat', hasNumberFormat);
   }
 
-  document.body.innerHTML = '<iframe src="./unsupported.html" width="100%" height="100%">';
+  // Hardcoded page because server forbids iframe embedding
+  document.title = 'Unsupported Browser';
+  document.body.setAttribute('style', 'height: 100%; margin: 0; font-family: Arial, Helvetica, sans-serif;');
+  document.body.innerHTML = '<table style="width:100%;height:100%;border-collapse:collapse"><tr><td style="vertical-align:middle;text-align:center"><div style="display:inline-block"><img src=./unsupported.png><h3>Your browser is not supported</h3><p>Please, update it or use our <a href="http://telegram.org/dl" target="_blank">native clients</a>.</p><a id="ignore" href="#">I\'m Feeling Lucky</a></div></table>';
+
+  if (!window.ignore) return;
+  if (!window.ignore.addEventListener) {
+    window.ignore.style.display = 'none';
+    return;
+  }
+
+  window.ignore.addEventListener('click', function() {
+    window.localStorage.setItem('tt-ignore-compat', '1');
+    window.location.reload();
+  });
 }
 
 compatTest();

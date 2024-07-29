@@ -4,14 +4,13 @@ import type {
   ApiEmojiInteraction, ApiSticker, ApiStickerSet, ApiStickerSetInfo, GramJsEmojiInteraction,
 } from '../../types';
 
+import { LOTTIE_STICKER_MIME_TYPE, VIDEO_STICKER_MIME_TYPE } from '../../../config';
 import { compact } from '../../../util/iteratees';
 import localDb from '../localDb';
 import { buildApiThumbnailFromCached, buildApiThumbnailFromPath } from './common';
 
-const LOTTIE_STICKER_MIME_TYPE = 'application/x-tgsticker';
-const VIDEO_STICKER_MIME_TYPE = 'video/webm';
-
-export function buildStickerFromDocument(document: GramJs.TypeDocument, isNoPremium?: boolean): ApiSticker | undefined {
+export function buildStickerFromDocument(document: GramJs.TypeDocument,
+  isNoPremium?: boolean, isPremium?: boolean): ApiSticker | undefined {
   if (document instanceof GramJs.DocumentEmpty) {
     return undefined;
   }
@@ -24,13 +23,7 @@ export function buildStickerFromDocument(document: GramJs.TypeDocument, isNoPrem
   const customEmojiAttribute = document.attributes
     .find((attr): attr is GramJs.DocumentAttributeCustomEmoji => attr instanceof GramJs.DocumentAttributeCustomEmoji);
 
-  const fileAttribute = (mimeType === LOTTIE_STICKER_MIME_TYPE || mimeType === VIDEO_STICKER_MIME_TYPE)
-    && document.attributes
-      .find((attr: any): attr is GramJs.DocumentAttributeFilename => (
-        attr instanceof GramJs.DocumentAttributeFilename
-      ));
-
-  if (!(stickerAttribute || customEmojiAttribute) && !fileAttribute) {
+  if (!(stickerAttribute || customEmojiAttribute)) {
     return undefined;
   }
 
@@ -54,7 +47,7 @@ export function buildStickerFromDocument(document: GramJs.TypeDocument, isNoPrem
   const stickerOrEmojiAttribute = (stickerAttribute || customEmojiAttribute)!;
   const stickerSetInfo = buildApiStickerSetInfo(stickerOrEmojiAttribute?.stickerset);
   const emoji = stickerOrEmojiAttribute?.alt;
-  const isFree = Boolean(customEmojiAttribute?.free ?? true);
+  const isFree = Boolean(customEmojiAttribute?.free ?? true) && !isPremium;
 
   const cachedThumb = document.thumbs && document.thumbs.find(
     (s): s is GramJs.PhotoCachedSize => s instanceof GramJs.PhotoCachedSize,
@@ -88,6 +81,7 @@ export function buildStickerFromDocument(document: GramJs.TypeDocument, isNoPrem
     .some(({ type }) => type === 'f');
 
   return {
+    mediaType: 'sticker',
     id: String(document.id),
     stickerSetInfo,
     emoji,
@@ -106,9 +100,7 @@ export function buildStickerFromDocument(document: GramJs.TypeDocument, isNoPrem
 export function buildStickerSet(set: GramJs.StickerSet): ApiStickerSet {
   const {
     archived,
-    animated,
     installedDate,
-    videos,
     id,
     accessHash,
     title,
@@ -119,17 +111,25 @@ export function buildStickerSet(set: GramJs.StickerSet): ApiStickerSet {
     thumbDocumentId,
   } = set;
 
+  const hasStaticThumb = thumbs?.some((thumb) => thumb.type === 's');
+  const hasAnimatedThumb = thumbs?.some((thumb) => thumb.type === 'a');
+  const hasVideoThumb = thumbs?.some((thumb) => thumb.type === 'v');
+  const thumbCustomEmojiId = thumbDocumentId && String(thumbDocumentId);
+
+  const hasThumbnail = hasStaticThumb || hasAnimatedThumb || hasVideoThumb || Boolean(thumbCustomEmojiId);
+
   return {
     isArchived: archived,
-    isLottie: animated,
-    isVideos: videos,
     isEmoji: emojis,
     installedDate,
     id: String(id),
     accessHash: String(accessHash),
     title,
-    hasThumbnail: Boolean(thumbs?.length || thumbDocumentId),
-    thumbCustomEmojiId: thumbDocumentId?.toString(),
+    hasStaticThumb,
+    hasAnimatedThumb,
+    hasVideoThumb,
+    hasThumbnail,
+    thumbCustomEmojiId,
     count,
     shortName,
   };
@@ -188,9 +188,11 @@ export function buildApiEmojiInteraction(json: GramJsEmojiInteraction): ApiEmoji
 
 export function processStickerPackResult(packs: GramJs.StickerPack[]) {
   return packs.reduce((acc, { emoticon, documents }) => {
-    acc[emoticon] = documents.map((documentId) => buildStickerFromDocument(
-      localDb.documents[String(documentId)],
-    )).filter(Boolean);
+    acc[emoticon] = documents.map((documentId) => {
+      const document = localDb.documents[String(documentId)];
+      if (!document) return undefined;
+      return buildStickerFromDocument(document);
+    }).filter(Boolean);
     return acc;
   }, {} as Record<string, ApiSticker[]>);
 }

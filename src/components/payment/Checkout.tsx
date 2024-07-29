@@ -3,7 +3,7 @@ import React, { memo, useCallback } from '../../lib/teact/teact';
 import { getActions } from '../../global';
 
 import type {
-  ApiChat, ApiInvoice, ApiPaymentCredentials,
+  ApiInvoice, ApiPaymentCredentials,
 } from '../../api/types';
 import type { FormEditDispatch } from '../../hooks/reducers/usePaymentReducer';
 import type { LangCode, Price } from '../../types';
@@ -15,8 +15,8 @@ import buildClassName from '../../util/buildClassName';
 import { formatCurrency } from '../../util/formatCurrency';
 import renderText from '../common/helpers/renderText';
 
-import useLang from '../../hooks/useLang';
 import useMedia from '../../hooks/useMedia';
+import useOldLang from '../../hooks/useOldLang';
 
 import SafeLink from '../common/SafeLink';
 import Checkbox from '../ui/Checkbox';
@@ -26,7 +26,6 @@ import Skeleton from '../ui/placeholder/Skeleton';
 import styles from './Checkout.module.scss';
 
 export type OwnProps = {
-  chat?: ApiChat;
   invoice?: ApiInvoice;
   checkoutInfo?: {
     paymentMethod?: string;
@@ -35,6 +34,7 @@ export type OwnProps = {
     name?: string;
     phone?: string;
     shippingMethod?: string;
+    botName?: string;
   };
   prices?: Price[];
   totalPrice?: number;
@@ -48,10 +48,10 @@ export type OwnProps = {
   onAcceptTos?: (isAccepted: boolean) => void;
   savedCredentials?: ApiPaymentCredentials[];
   isPaymentFormUrl?: boolean;
+  botName?: string;
 };
 
 const Checkout: FC<OwnProps> = ({
-  chat,
   invoice,
   prices,
   shippingPrices,
@@ -66,10 +66,11 @@ const Checkout: FC<OwnProps> = ({
   hasShippingOptions,
   savedCredentials,
   isPaymentFormUrl,
+  botName,
 }) => {
   const { setPaymentStep } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
   const isInteractive = Boolean(dispatch);
 
   const {
@@ -120,7 +121,7 @@ const Checkout: FC<OwnProps> = ({
               className={buildClassName(styles.tipsItem, tip === tipAmount && styles.tipsItem_active)}
               onClick={dispatch ? () => handleTipsClick(tip === tipAmount ? 0 : tip) : undefined}
             >
-              {formatCurrency(tip, currency, lang.code, true)}
+              {formatCurrency(tip, currency, lang.code, { shouldOmitFractions: true })}
             </div>
           ))}
         </div>
@@ -129,7 +130,7 @@ const Checkout: FC<OwnProps> = ({
   }
 
   function renderTosLink(url: string, isRtl?: boolean) {
-    const langString = lang('PaymentCheckoutAcceptRecurrent', chat?.title);
+    const langString = lang('PaymentCheckoutAcceptRecurrent', botName);
     const langStringSplit = langString.split('*');
     return (
       <>
@@ -198,7 +199,7 @@ const Checkout: FC<OwnProps> = ({
           label: lang('PaymentCheckoutProvider'),
           customIcon: buildClassName(styles.provider, styles[paymentProvider.toLowerCase()]),
         })}
-        {(needAddress || !isInteractive) && renderCheckoutItem({
+        {(needAddress || (!isInteractive && shippingAddress)) && renderCheckoutItem({
           title: shippingAddress,
           label: lang('PaymentShippingAddress'),
           icon: 'location',
@@ -214,7 +215,7 @@ const Checkout: FC<OwnProps> = ({
           label: lang('PaymentCheckoutPhoneNumber'),
           icon: 'phone',
         })}
-        {(hasShippingOptions || !isInteractive) && renderCheckoutItem({
+        {(hasShippingOptions || (!isInteractive && shippingMethod)) && renderCheckoutItem({
           title: shippingMethod,
           label: lang('PaymentCheckoutShippingMethod'),
           icon: 'truck',
@@ -256,14 +257,17 @@ function renderCheckoutItem({
   onClick?: NoneToVoidFunction;
   customIcon?: string;
 }) {
+  const isMultiline = Boolean(title && label !== title);
+
   return (
     <ListItem
-      multiline={Boolean(title && label !== title)}
+      multiline={isMultiline}
+      narrow={isMultiline}
       icon={icon}
       inactive={!onClick}
       onClick={onClick}
+      leftElement={customIcon && <i className={buildClassName('icon', customIcon)} />}
     >
-      {customIcon && <i className={buildClassName('icon', customIcon)} />}
       <div className={styles.checkoutInfoItemInfoTitle}>
         {title || label}
       </div>

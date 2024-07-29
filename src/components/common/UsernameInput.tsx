@@ -7,10 +7,10 @@ import { getActions } from '../../global';
 import { TME_LINK_PREFIX } from '../../config';
 import { debounce } from '../../util/schedulers';
 import {
-  isUsernameValid, MAX_USERNAME_LENGTH, MIN_USERNAME_LENGTH, USERNAME_REGEX,
+  isUsernameValid, MAX_USERNAME_LENGTH, MIN_UPDATE_USERNAME_LENGTH, USERNAME_REGEX,
 } from '../../util/username';
 
-import useLang from '../../hooks/useLang';
+import useOldLang from '../../hooks/useOldLang';
 import usePrevious from '../../hooks/usePrevious';
 
 import InputText from '../ui/InputText';
@@ -39,7 +39,7 @@ const UsernameInput: FC<OwnProps> = ({
   const { checkUsername, checkPublicLink } = getActions();
   const [username, setUsername] = useState(currentUsername || '');
 
-  const lang = useLang();
+  const lang = useOldLang();
   const langPrefix = asLink ? 'SetUrl' : 'Username';
   const label = asLink ? lang('SetUrlPlaceholder') : lang('Username');
 
@@ -53,7 +53,7 @@ const UsernameInput: FC<OwnProps> = ({
       return [];
     }
 
-    if (username.length < MIN_USERNAME_LENGTH) {
+    if (username.length < MIN_UPDATE_USERNAME_LENGTH) {
       return [undefined, lang(`${langPrefix}InvalidShort`)];
     }
     if (username.length > MAX_USERNAME_LENGTH) {
@@ -92,7 +92,7 @@ const UsernameInput: FC<OwnProps> = ({
 
     setUsername(newUsername);
 
-    const isValid = isUsernameValid(newUsername);
+    const isValid = newUsername === '' ? true : isUsernameValid(newUsername, true);
     if (!isValid) return;
 
     onChange?.(newUsername);

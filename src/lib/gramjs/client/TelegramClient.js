@@ -31,7 +31,7 @@ const RequestState = require('../network/RequestState');
 const Deferred = require('../../../util/Deferred').default;
 
 const DEFAULT_DC_ID = 2;
-const WEBDOCUMENT_DC_ID = 4;
+const DEFAULT_WEBDOCUMENT_DC_ID = 4;
 const EXPORTED_SENDER_RECONNECT_TIMEOUT = 1000; // 1 sec
 const EXPORTED_SENDER_RELEASE_TIMEOUT = 30000; // 30 sec
 const WEBDOCUMENT_REQUEST_PART_SIZE = 131072; // 128kb
@@ -157,7 +157,7 @@ class TelegramClient {
                         .toString() || '1.0',
                     appVersion: args.appVersion || '1.0',
                     langCode: args.langCode,
-                    langPack: '', // this should be left empty.
+                    langPack: 'weba',
                     systemLangCode: args.systemLangCode,
                     query: x,
                     proxy: undefined, // no proxies yet.
@@ -244,6 +244,10 @@ class TelegramClient {
         }
         this._connectedDeferred.resolve();
         this._isSwitchingDc = false;
+
+        // Prepare file connection on current DC to speed up initial media loading
+        const mediaSender = await this._borrowExportedSender(this.session.dcId, false, undefined, 0, this.isPremium);
+        if (mediaSender) this.releaseExportedSender(mediaSender);
     }
 
     async _initSession() {
@@ -294,6 +298,9 @@ class TelegramClient {
 
             try {
                 const ping = () => {
+                    if (this._destroyed) {
+                        return undefined;
+                    }
                     return this._sender.send(new requests.PingDelayDisconnect({
                         pingId: Helpers.getRandomInt(Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER),
                         disconnectDelay: PING_DISCONNECT_DELAY,
@@ -330,6 +337,9 @@ class TelegramClient {
 
                 if (this._sender.isReconnecting || this._isSwitchingDc) {
                     continue;
+                }
+                if (this._destroyed) {
+                    break;
                 }
                 this._sender.reconnect();
             }
@@ -628,6 +638,7 @@ class TelegramClient {
             authKeyCallback: this._authKeyCallback.bind(this),
             isMainSender: dcId === this.session.dcId,
             isExported: true,
+            updateCallback: this._handleUpdate.bind(this),
             getShouldDebugExportedSenders: this.getShouldDebugExportedSenders.bind(this),
             onConnectionBreak: () => this._cleanupExportedSender(dcId, index),
         });
@@ -805,10 +816,16 @@ class TelegramClient {
         if (!(photo instanceof constructors.Photo)) {
             return undefined;
         }
+
+        const maxSize = photo.sizes.reduce((max, current) => {
+            if (!current.w) return max;
+            return max.w > current.w ? max : current;
+        });
         const isVideoSize = args.sizeType === 'u' || args.sizeType === 'v';
-        const size = this._pickFileSize(isVideoSize
-            ? [...photo.videoSizes, ...photo.sizes]
-            : photo.sizes, args.sizeType);
+        const size = !args.sizeType
+            ? maxSize
+            : this._pickFileSize(isVideoSize ? [...photo.videoSizes, ...photo.sizes] : photo.sizes, args.sizeType);
+
         if (!size || (size instanceof constructors.PhotoSizeEmpty)) {
             return undefined;
         }
@@ -895,7 +912,10 @@ class TelegramClient {
                     offset,
                     limit: WEBDOCUMENT_REQUEST_PART_SIZE,
                 });
-                const sender = await this._borrowExportedSender(WEBDOCUMENT_DC_ID);
+
+                const sender = await this._borrowExportedSender(
+                    this._config?.webfileDcId || DEFAULT_WEBDOCUMENT_DC_ID,
+                );
                 const res = await sender.send(downloaded);
                 this.releaseExportedSender(sender);
                 offset += 131072;
@@ -942,7 +962,7 @@ class TelegramClient {
                         offset,
                         limit: WEBDOCUMENT_REQUEST_PART_SIZE,
                     });
-                    const sender = await this._borrowExportedSender(WEBDOCUMENT_DC_ID);
+                    const sender = await this._borrowExportedSender(DEFAULT_WEBDOCUMENT_DC_ID);
                     const res = await sender.send(downloaded);
                     this.releaseExportedSender(sender);
                     offset += 131072;
@@ -1088,10 +1108,18 @@ class TelegramClient {
         return undefined;
     }
 
+    async loadConfig() {
+        if (!this._config) {
+            this._config = await this.invoke(new requests.help.GetConfig());
+        }
+    }
+
     async start(authParams) {
         if (!this.isConnected()) {
             await this.connect();
         }
+
+        this.loadConfig();
 
         if (await checkAuthorization(this, authParams.shouldThrowIfUnauthorized)) {
             return;

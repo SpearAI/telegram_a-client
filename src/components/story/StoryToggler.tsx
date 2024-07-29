@@ -2,6 +2,7 @@ import React, { memo, useEffect, useMemo } from '../../lib/teact/teact';
 import { getActions, withGlobal } from '../../global';
 
 import type { ApiChat, ApiUser } from '../../api/types';
+import type { GlobalState } from '../../global/types';
 
 import { ANIMATION_END_DELAY, PREVIEW_AVATAR_COUNT } from '../../config';
 import {
@@ -11,7 +12,7 @@ import buildClassName from '../../util/buildClassName';
 import { animateClosing, animateOpening, ANIMATION_DURATION } from './helpers/ribbonAnimation';
 
 import { dispatchHeavyAnimationEvent } from '../../hooks/useHeavyAnimationCheck';
-import useLang from '../../hooks/useLang';
+import useOldLang from '../../hooks/useOldLang';
 import useShowTransition from '../../hooks/useShowTransition';
 import useStoryPreloader from './hooks/useStoryPreloader';
 
@@ -32,6 +33,7 @@ interface StateProps {
   withAnimation?: boolean;
   usersById: Record<string, ApiUser>;
   chatsById: Record<string, ApiChat>;
+  peerStories: GlobalState['stories']['byPeerId'];
 }
 
 const PRELOAD_PEERS = 5;
@@ -46,10 +48,11 @@ function StoryToggler({
   isForumPanelOpen,
   isArchived,
   withAnimation,
+  peerStories,
 }: OwnProps & StateProps) {
   const { toggleStoryRibbon } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const peers = useMemo(() => {
     if (orderedPeerIds.length === 1) {
@@ -62,6 +65,24 @@ function StoryToggler({
       .slice(0, PREVIEW_AVATAR_COUNT)
       .reverse();
   }, [currentUserId, orderedPeerIds, usersById, chatsById]);
+
+  const closeFriends = useMemo(() => {
+    if (!peers?.length) return {};
+    return peers.reduce((acc, peer) => {
+      const stories = peerStories[peer.id];
+      if (!stories) return acc;
+
+      const isCloseFriend = stories.orderedIds.some((id) => {
+        const story = stories.byId[id];
+        if (!story || !('isForCloseFriends' in story)) return false;
+        const isRead = stories.lastReadId && story.id <= stories.lastReadId;
+        return story.isForCloseFriends && !isRead;
+      });
+
+      acc[peer.id] = isCloseFriend;
+      return acc;
+    }, {} as Record<string, boolean>);
+  }, [peerStories, peers]);
 
   const preloadPeerIds = useMemo(() => {
     return orderedPeerIds.slice(0, PRELOAD_PEERS);
@@ -104,6 +125,7 @@ function StoryToggler({
           size="tiny"
           className={styles.avatar}
           withStorySolid
+          forceFriendStorySolid={closeFriends[peer.id]}
         />
       ))}
     </button>
@@ -111,7 +133,7 @@ function StoryToggler({
 }
 
 export default memo(withGlobal<OwnProps>((global, { isArchived }): StateProps => {
-  const { orderedPeerIds: { archived, active } } = global.stories;
+  const { orderedPeerIds: { archived, active }, byPeerId } = global.stories;
   const { storyViewer: { isRibbonShown, isArchivedRibbonShown } } = selectTabState(global);
   const isForumPanelOpen = selectIsForumPanelOpen(global);
   const withAnimation = selectPerformanceSettingsValue(global, 'storyRibbonAnimations');
@@ -124,5 +146,6 @@ export default memo(withGlobal<OwnProps>((global, { isArchived }): StateProps =>
     withAnimation,
     usersById: global.users.byId,
     chatsById: global.chats.byId,
+    peerStories: byPeerId,
   };
 })(StoryToggler));

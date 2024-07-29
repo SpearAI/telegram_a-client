@@ -6,7 +6,7 @@ import { filterUsersByName } from '../../../global/helpers';
 import { unique } from '../../../util/iteratees';
 import { MEMO_EMPTY_ARRAY } from '../../../util/memo';
 
-import useLang from '../../../hooks/useLang';
+import useOldLang from '../../../hooks/useOldLang';
 
 import Picker from '../../common/Picker';
 
@@ -29,7 +29,7 @@ function AllowDenyList({
   lockedIds,
   onSelect,
 }: OwnProps) {
-  const lang = useLang();
+  const lang = useOldLang();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const displayedIds = useMemo(() => {
@@ -42,7 +42,7 @@ function AllowDenyList({
       key={id}
       itemIds={displayedIds}
       selectedIds={selectedIds ?? MEMO_EMPTY_ARRAY}
-      lockedIds={lockedIds}
+      lockedSelectedIds={lockedIds}
       filterValue={searchQuery}
       filterPlaceholder={lang('Search')}
       searchInputId={`${id}-picker-search`}

@@ -16,7 +16,7 @@ import ScrollDownButton from './ScrollDownButton';
 import styles from './FloatingActionButtons.module.scss';
 
 type OwnProps = {
-  isShown: boolean;
+  withScrollDown: boolean;
   canPost?: boolean;
   withExtraShift?: boolean;
 };
@@ -25,6 +25,8 @@ type StateProps = {
   chatId?: string;
   messageListType?: MessageListType;
   unreadCount?: number;
+  unreadReactions?: number[];
+  unreadMentions?: number[];
   reactionsCount?: number;
   mentionsCount?: number;
 };
@@ -32,11 +34,13 @@ type StateProps = {
 const FOCUS_MARGIN = 20;
 
 const FloatingActionButtons: FC<OwnProps & StateProps> = ({
-  isShown,
+  withScrollDown,
   canPost,
   messageListType,
   chatId,
   unreadCount,
+  unreadReactions,
+  unreadMentions,
   reactionsCount,
   mentionsCount,
   withExtraShift,
@@ -53,10 +57,22 @@ const FloatingActionButtons: FC<OwnProps & StateProps> = ({
   const hasUnreadMentions = Boolean(mentionsCount);
 
   useEffect(() => {
+    if (hasUnreadReactions && chatId && !unreadReactions?.length) {
+      fetchUnreadReactions({ chatId });
+    }
+  }, [chatId, fetchUnreadReactions, hasUnreadReactions, unreadReactions?.length]);
+
+  useEffect(() => {
     if (hasUnreadReactions && chatId) {
       fetchUnreadReactions({ chatId });
     }
   }, [chatId, fetchUnreadReactions, hasUnreadReactions]);
+
+  useEffect(() => {
+    if (hasUnreadMentions && chatId && !unreadMentions?.length) {
+      fetchUnreadMentions({ chatId });
+    }
+  }, [chatId, fetchUnreadMentions, hasUnreadMentions, unreadMentions?.length]);
 
   useEffect(() => {
     if (hasUnreadMentions && chatId) {
@@ -64,15 +80,17 @@ const FloatingActionButtons: FC<OwnProps & StateProps> = ({
     }
   }, [chatId, fetchUnreadMentions, hasUnreadMentions]);
 
-  const handleClick = useLastCallback(() => {
-    if (!isShown) {
+  const handleScrollDownClick = useLastCallback(() => {
+    if (!withScrollDown) {
       return;
     }
 
     if (messageListType === 'thread') {
       focusNextReply();
     } else {
-      const messagesContainer = elementRef.current!.parentElement!.querySelector<HTMLDivElement>('.MessageList')!;
+      const messagesContainer = elementRef.current!.parentElement!.querySelector<HTMLDivElement>(
+        '.Transition_slide-active > .MessageList',
+      )!;
       const messageElements = messagesContainer.querySelectorAll<HTMLDivElement>('.message-list-item');
       const lastMessageElement = messageElements[messageElements.length - 1];
       if (!lastMessageElement) {
@@ -85,8 +103,8 @@ const FloatingActionButtons: FC<OwnProps & StateProps> = ({
 
   const fabClassName = buildClassName(
     styles.root,
-    (isShown || Boolean(reactionsCount) || Boolean(mentionsCount)) && styles.revealed,
-    (Boolean(reactionsCount) || Boolean(mentionsCount)) && !isShown && styles.onlyReactions,
+    (withScrollDown || Boolean(reactionsCount) || Boolean(mentionsCount)) && styles.revealed,
+    (Boolean(reactionsCount) || Boolean(mentionsCount)) && !withScrollDown && styles.hideScrollDown,
     !canPost && styles.noComposer,
     !withExtraShift && styles.noExtraShift,
   );
@@ -118,7 +136,7 @@ const FloatingActionButtons: FC<OwnProps & StateProps> = ({
       <ScrollDownButton
         icon="arrow-down"
         ariaLabelLang="AccDescrPageDown"
-        onClick={handleClick}
+        onClick={handleScrollDownClick}
         unreadCount={unreadCount}
         className={styles.unread}
       />
@@ -142,6 +160,8 @@ export default memo(withGlobal<OwnProps>(
       messageListType,
       chatId,
       reactionsCount: shouldShowCount ? chat.unreadReactionsCount : undefined,
+      unreadReactions: shouldShowCount ? chat.unreadReactions : undefined,
+      unreadMentions: shouldShowCount ? chat.unreadMentions : undefined,
       mentionsCount: shouldShowCount ? chat.unreadMentionsCount : undefined,
       unreadCount: shouldShowCount ? chat.unreadCount : undefined,
     };

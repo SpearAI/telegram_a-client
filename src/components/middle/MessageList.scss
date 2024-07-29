@@ -239,7 +239,7 @@
       body.is-ios &,
       body.is-macos & {
         font-size: calc(var(--message-text-size, 1rem) - 0.125rem);
-        line-height: calc(var(--message-text-size, 1rem) + 0.5rem);
+        line-height: calc(var(--message-text-size, 1rem) + 0.2rem);
       }
 
       .emoji-small {
@@ -424,7 +424,7 @@
 
   .Transition_slide-from > &,
   .Transition_slide-to > & {
-    scrollbar-color: transparent !important;
+    scrollbar-color: transparent transparent !important;
 
     &::-webkit-scrollbar-thumb {
       background-color: transparent !important;

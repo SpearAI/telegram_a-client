@@ -1,10 +1,13 @@
 import type { ApiMessage } from '../../../../api/types';
+import type { IAlbum } from '../../../../types';
 
 import { EMOJI_SIZES, MESSAGE_CONTENT_CLASS_NAME } from '../../../../config';
 import { getMessageContent } from '../../../../global/helpers';
+import getSingularPaidMedia from './getSingularPaidMedia';
 
 export function buildContentClassName(
   message: ApiMessage,
+  album?: IAlbum,
   {
     hasSubheader,
     isCustomShape,
@@ -12,12 +15,13 @@ export function buildContentClassName(
     asForwarded,
     hasThread,
     forceSenderName,
-    hasComments,
+    hasCommentCounter,
     hasActionButton,
     hasReactions,
     isGeoLiveActive,
     withVoiceTranscription,
     peerColorClass,
+    hasOutsideReactions,
   }: {
     hasSubheader?: boolean;
     isCustomShape?: boolean | number;
@@ -25,24 +29,45 @@ export function buildContentClassName(
     asForwarded?: boolean;
     hasThread?: boolean;
     forceSenderName?: boolean;
-    hasComments?: boolean;
+    hasCommentCounter?: boolean;
     hasActionButton?: boolean;
     hasReactions?: boolean;
     isGeoLiveActive?: boolean;
     withVoiceTranscription?: boolean;
     peerColorClass?: string;
+    hasOutsideReactions?: boolean;
   } = {},
 ) {
+  const { paidMedia } = getMessageContent(message);
+  const { photo: paidMediaPhoto, video: paidMediaVideo } = getSingularPaidMedia(paidMedia);
+
   const {
-    text, photo, video, audio, voice, document, poll, webPage, contact, location, invoice, storyData,
+    photo = paidMediaPhoto, video = paidMediaVideo,
+    audio, voice, document, poll, webPage, contact, location, invoice, storyData,
     giveaway, giveawayResults,
   } = getMessageContent(message);
+  const text = album?.hasMultipleCaptions ? undefined : getMessageContent(album?.captionMessage || message).text;
+  const hasFactCheck = Boolean(message.factCheck?.text);
+
+  const isRoundVideo = video?.mediaType === 'video' && video.isRound;
+  const isInvertedMedia = message.isInvertedMedia;
+  const isInvertibleMedia = photo || (video && !isRoundVideo) || album || webPage;
 
   const classNames = [MESSAGE_CONTENT_CLASS_NAME];
-  const isMedia = storyData || photo || video || location || invoice?.extendedMedia;
-  const hasText = text || location?.type === 'venue' || isGeoLiveActive;
+  const isMedia = storyData || photo || video || location || invoice?.extendedMedia || paidMedia;
+  const hasText = text || location?.mediaType === 'venue' || isGeoLiveActive || hasFactCheck;
   const isMediaWithNoText = isMedia && !hasText;
   const isViaBot = Boolean(message.viaBotId);
+
+  const hasFooter = (() => {
+    if (isInvertedMedia && isInvertibleMedia) {
+      if (hasReactions && !hasOutsideReactions) return true;
+      if (hasFactCheck) return true;
+      if (webPage && hasText) return true;
+      return false;
+    }
+    return hasText;
+  })();
 
   if (peerColorClass) {
     classNames.push(peerColorClass);
@@ -65,12 +90,12 @@ export function buildContentClassName(
 
   if (isCustomShape) {
     classNames.push('custom-shape');
-    if (video?.isRound) {
+    if (isRoundVideo) {
       classNames.push('round');
     }
 
-    if (hasComments) {
-      classNames.push('has-comments');
+    if (hasCommentCounter) {
+      classNames.push('has-comment-counter');
     }
   }
   if (isMedia) {
@@ -95,6 +120,10 @@ export function buildContentClassName(
 
     if (webPage.photo || webPage.video) {
       classNames.push('media');
+    }
+
+    if (webPage.document) {
+      classNames.push('document');
     }
   }
 
@@ -122,6 +151,10 @@ export function buildContentClassName(
     classNames.push('has-reactions');
   }
 
+  if (hasOutsideReactions) {
+    classNames.push('has-outside-reactions');
+  }
+
   if (isViaBot) {
     classNames.push('is-via-bot');
   }
@@ -133,17 +166,31 @@ export function buildContentClassName(
   if (!isCustomShape) {
     classNames.push('has-shadow');
 
-    if (isMedia && hasComments) {
+    if (isMedia && hasThread) {
       classNames.push('has-background');
     }
 
-    if (hasSubheader || asForwarded || isViaBot || !isMediaWithNoText || forceSenderName) {
+    if (hasSubheader || asForwarded || isViaBot || !isMediaWithNoText || forceSenderName || hasFactCheck) {
       classNames.push('has-solid-background');
+    }
+
+    if (hasFactCheck) {
+      classNames.push('has-fact-check');
     }
 
     if (isLastInGroup && (photo || !isMediaWithNoText || (location && asForwarded))) {
       classNames.push('has-appendix');
     }
+  }
+
+  if (isInvertibleMedia && isInvertedMedia) {
+    classNames.push('is-inverted-media');
+  }
+
+  if (hasFooter) {
+    classNames.push('has-footer');
+  } else {
+    classNames.push('no-footer');
   }
 
   return classNames.join(' ');

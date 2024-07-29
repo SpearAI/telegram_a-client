@@ -13,6 +13,7 @@ import type {
   ApiUser,
   ApiUserStatus,
 } from '../../api/types';
+import type { TabState } from '../../global/types';
 import type {
   ISettings, ProfileState, ProfileTabType, SharedMediaType, ThreadId,
 } from '../../types';
@@ -26,14 +27,23 @@ import {
   SLIDE_TRANSITION_DURATION,
 } from '../../config';
 import {
-  getHasAdminRight, getIsSavedDialog, isChatAdmin, isChatChannel, isChatGroup, isUserBot, isUserId, isUserRightBanned,
+  getHasAdminRight,
+  getIsDownloading,
+  getIsSavedDialog,
+  getMessageDocument,
+  isChatAdmin,
+  isChatChannel,
+  isChatGroup,
+  isUserBot,
+  isUserId,
+  isUserRightBanned,
 } from '../../global/helpers';
 import {
   selectActiveDownloads,
   selectChat,
   selectChatFullInfo,
   selectChatMessages,
-  selectCurrentMediaSearch,
+  selectCurrentSharedMediaSearch,
   selectIsCurrentUserPremium,
   selectIsRightColumnShown,
   selectPeerFullInfo,
@@ -54,20 +64,20 @@ import usePeerStoriesPolling from '../../hooks/polling/usePeerStoriesPolling';
 import useCacheBuster from '../../hooks/useCacheBuster';
 import useEffectWithPrevDeps from '../../hooks/useEffectWithPrevDeps';
 import { useIntersectionObserver } from '../../hooks/useIntersectionObserver';
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 import useAsyncRendering from './hooks/useAsyncRendering';
 import useProfileState from './hooks/useProfileState';
 import useProfileViewportIds from './hooks/useProfileViewportIds';
 import useTransitionFixes from './hooks/useTransitionFixes';
 
 import Audio from '../common/Audio';
-import ChatExtra from '../common/ChatExtra';
 import Document from '../common/Document';
 import GroupChatInfo from '../common/GroupChatInfo';
 import Media from '../common/Media';
 import NothingFound from '../common/NothingFound';
 import PrivateChatInfo from '../common/PrivateChatInfo';
+import ChatExtra from '../common/profile/ChatExtra';
 import ProfileInfo from '../common/ProfileInfo';
 import WebLink from '../common/WebLink';
 import ChatList from '../left/main/ChatList';
@@ -109,6 +119,7 @@ type StateProps = {
   adminMembersById?: Record<string, ApiChatMember>;
   commonChatIds?: string[];
   storyIds?: number[];
+  pinnedStoryIds?: number[];
   archiveStoryIds?: number[];
   storyByIds?: Record<number, ApiTypeStory>;
   chatsById: Record<string, ApiChat>;
@@ -116,7 +127,7 @@ type StateProps = {
   userStatusesById: Record<string, ApiUserStatus>;
   isRightColumnShown: boolean;
   isRestricted?: boolean;
-  activeDownloadIds?: number[];
+  activeDownloads: TabState['activeDownloads'];
   isChatProtected?: boolean;
   nextProfileTab?: ProfileTabType;
   shouldWarnAboutSvg?: boolean;
@@ -155,6 +166,7 @@ const Profile: FC<OwnProps & StateProps> = ({
   messagesById,
   foundIds,
   storyIds,
+  pinnedStoryIds,
   archiveStoryIds,
   storyByIds,
   mediaSearchType,
@@ -172,7 +184,7 @@ const Profile: FC<OwnProps & StateProps> = ({
   chatsById,
   isRightColumnShown,
   isRestricted,
-  activeDownloadIds,
+  activeDownloads,
   isChatProtected,
   nextProfileTab,
   shouldWarnAboutSvg,
@@ -184,27 +196,27 @@ const Profile: FC<OwnProps & StateProps> = ({
   forceScrollProfileTab,
 }) => {
   const {
-    setLocalMediaSearchType,
+    setSharedMediaSearchType,
     loadMoreMembers,
     loadCommonChats,
     openChat,
-    searchMediaMessagesLocal,
+    searchSharedMediaMessages,
     openMediaViewer,
     openAudioPlayer,
     focusMessage,
     loadProfilePhotos,
     setNewChatMembersDialogState,
-    loadPeerPinnedStories,
+    loadPeerProfileStories,
     loadStoriesArchive,
     openPremiumModal,
-    fetchChannelRecommendations,
+    loadChannelRecommendations,
   } = getActions();
 
   // eslint-disable-next-line no-null/no-null
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line no-null/no-null
   const transitionRef = useRef<HTMLDivElement>(null);
-  const lang = useLang();
+  const lang = useOldLang();
   const [deletingUserId, setDeletingUserId] = useState<string | undefined>();
 
   const profileId = isSavedDialog ? String(threadId) : (resolvedUserId || chatId);
@@ -257,14 +269,14 @@ const Profile: FC<OwnProps & StateProps> = ({
 
   useEffect(() => {
     if (isChannel && !similarChannels) {
-      fetchChannelRecommendations({ chatId });
+      loadChannelRecommendations({ chatId });
     }
   }, [chatId, isChannel, similarChannels]);
 
   const renderingActiveTab = activeTab > tabs.length - 1 ? tabs.length - 1 : activeTab;
   const tabType = tabs[renderingActiveTab].type as ProfileTabType;
   const handleLoadPeerStories = useCallback(({ offsetId }: { offsetId: number }) => {
-    loadPeerPinnedStories({ peerId: chatId, offsetId });
+    loadPeerProfileStories({ peerId: chatId, offsetId });
   }, [chatId]);
   const handleLoadStoriesArchive = useCallback(({ offsetId }: { offsetId: number }) => {
     loadStoriesArchive({ peerId: currentUserId!, offsetId });
@@ -273,7 +285,7 @@ const Profile: FC<OwnProps & StateProps> = ({
   const [resultType, viewportIds, getMore, noProfileInfo] = useProfileViewportIds(
     loadMoreMembers,
     loadCommonChats,
-    searchMediaMessagesLocal,
+    searchSharedMediaMessages,
     handleLoadPeerStories,
     handleLoadStoriesArchive,
     tabType,
@@ -287,6 +299,7 @@ const Profile: FC<OwnProps & StateProps> = ({
     foundIds,
     threadId,
     storyIds,
+    pinnedStoryIds,
     archiveStoryIds,
     similarChannels,
   );
@@ -326,18 +339,18 @@ const Profile: FC<OwnProps & StateProps> = ({
 
   // Update search type when switching tabs or forum topics
   useEffect(() => {
-    setLocalMediaSearchType({ mediaType: tabType as SharedMediaType });
-  }, [setLocalMediaSearchType, tabType, threadId]);
+    setSharedMediaSearchType({ mediaType: tabType as SharedMediaType });
+  }, [setSharedMediaSearchType, tabType, threadId]);
 
   useEffect(() => {
     loadProfilePhotos({ profileId });
   }, [profileId]);
 
-  const handleSelectMedia = useLastCallback((mediaId: number) => {
+  const handleSelectMedia = useLastCallback((messageId: number) => {
     openMediaViewer({
       chatId: profileId,
       threadId: MAIN_THREAD_ID,
-      mediaId,
+      messageId,
       origin: MediaViewerOrigin.SharedMedia,
     });
   });
@@ -350,8 +363,8 @@ const Profile: FC<OwnProps & StateProps> = ({
     openChat({ id });
   });
 
-  const handleMessageFocus = useLastCallback((messageId: number) => {
-    focusMessage({ chatId: profileId, messageId });
+  const handleMessageFocus = useLastCallback((message: ApiMessage) => {
+    focusMessage({ chatId: message.chatId, messageId: message.id });
   });
 
   const handleDeleteMembersModalClose = useLastCallback(() => {
@@ -515,11 +528,11 @@ const Profile: FC<OwnProps & StateProps> = ({
             />
           ))
         ) : (resultType === 'stories' || resultType === 'storiesArchive') ? (
-          (viewportIds as number[])!.map((id) => storyByIds?.[id] && (
+          (viewportIds as number[])!.map((id, i) => storyByIds?.[id] && (
             <MediaStory
+              teactOrderKey={i}
               key={`${resultType}_${id}`}
               story={storyByIds[id]}
-              isProtected={isChatProtected}
               isArchive={resultType === 'storiesArchive'}
             />
           ))
@@ -527,13 +540,14 @@ const Profile: FC<OwnProps & StateProps> = ({
           (viewportIds as number[])!.map((id) => messagesById[id] && (
             <Document
               key={id}
-              message={messagesById[id]}
+              document={getMessageDocument(messagesById[id])!}
               withDate
               smaller
               className="scroll-item"
-              isDownloading={activeDownloadIds?.includes(id)}
+              isDownloading={getIsDownloading(activeDownloads, getMessageDocument(messagesById[id])!)}
               observeIntersection={observeIntersectionForMedia}
               onDateClick={handleMessageFocus}
+              message={messagesById[id]}
               shouldWarnAboutSvg={shouldWarnAboutSvg}
             />
           ))
@@ -559,7 +573,7 @@ const Profile: FC<OwnProps & StateProps> = ({
               onPlay={handlePlayAudio}
               onDateClick={handleMessageFocus}
               canDownload={!isChatProtected && !messagesById[id].isProtected}
-              isDownloading={activeDownloadIds?.includes(id)}
+              isDownloading={getIsDownloading(activeDownloads, messagesById[id].content.audio!)}
             />
           ))
         ) : resultType === 'voice' ? (
@@ -575,7 +589,7 @@ const Profile: FC<OwnProps & StateProps> = ({
               onPlay={handlePlayAudio}
               onDateClick={handleMessageFocus}
               canDownload={!isChatProtected && !messagesById[id].isProtected}
-              isDownloading={activeDownloadIds?.includes(id)}
+              isDownloading={getIsDownloading(activeDownloads, messagesById[id].content.voice!)}
             />
           ))
         ) : resultType === 'members' ? (
@@ -711,7 +725,7 @@ export default memo(withGlobal<OwnProps>(
     const chat = selectChat(global, chatId);
     const chatFullInfo = selectChatFullInfo(global, chatId);
     const messagesById = selectChatMessages(global, chatId);
-    const { currentType: mediaSearchType, resultsByType } = selectCurrentMediaSearch(global) || {};
+    const { currentType: mediaSearchType, resultsByType } = selectCurrentSharedMediaSearch(global) || {};
     const { foundIds } = (resultsByType && mediaSearchType && resultsByType[mediaSearchType]) || {};
 
     const isTopicInfo = Boolean(chat?.isForum && threadId && threadId !== MAIN_THREAD_ID);
@@ -729,9 +743,10 @@ export default memo(withGlobal<OwnProps>(
     const areMembersHidden = hasMembersTab && chat
       && (chat.isForbidden || (chatFullInfo && !chatFullInfo.canViewMembers));
     const canAddMembers = hasMembersTab && chat
-      && (getHasAdminRight(chat, 'inviteUsers') || !isUserRightBanned(chat, 'inviteUsers') || chat.isCreator);
+      && (getHasAdminRight(chat, 'inviteUsers') || (!isChannel && !isUserRightBanned(chat, 'inviteUsers'))
+        || chat.isCreator);
     const canDeleteMembers = hasMembersTab && chat && (getHasAdminRight(chat, 'banUsers') || chat.isCreator);
-    const activeDownloads = selectActiveDownloads(global, chatId);
+    const activeDownloads = selectActiveDownloads(global);
     const { similarChannelIds } = selectSimilarChannelIds(global, chatId) || {};
     const isCurrentUserPremium = selectIsCurrentUserPremium(global);
 
@@ -749,7 +764,8 @@ export default memo(withGlobal<OwnProps>(
     const hasStoriesTab = peer && (user?.isSelf || (!peer.areStoriesHidden && peerFullInfo?.hasPinnedStories))
       && !isSavedDialog;
     const peerStories = hasStoriesTab ? selectPeerStories(global, peer.id) : undefined;
-    const storyIds = peerStories?.pinnedIds;
+    const storyIds = peerStories?.profileIds;
+    const pinnedStoryIds = peerStories?.pinnedIds;
     const storyByIds = peerStories?.byId;
     const archiveStoryIds = peerStories?.archiveIds;
 
@@ -769,11 +785,12 @@ export default memo(withGlobal<OwnProps>(
       currentUserId: global.currentUserId,
       isRightColumnShown: selectIsRightColumnShown(global, isMobile),
       isRestricted: chat?.isRestricted,
-      activeDownloadIds: activeDownloads?.ids,
+      activeDownloads,
       usersById,
       userStatusesById,
       chatsById,
       storyIds,
+      pinnedStoryIds,
       archiveStoryIds,
       storyByIds,
       isChatProtected: chat?.isProtected,

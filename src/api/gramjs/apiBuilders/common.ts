@@ -85,10 +85,12 @@ export function buildApiPhoto(photo: GramJs.Photo, isSpoiler?: boolean): ApiPhot
     .map(buildApiPhotoSize);
 
   return {
+    mediaType: 'photo',
     id: String(photo.id),
     thumbnail: buildApiThumbnailFromStripped(photo.sizes),
     sizes,
     isSpoiler,
+    date: photo.date,
     ...(photo.videoSizes && { videoSizes: compact(photo.videoSizes.map(buildApiVideoSize)), isVideo: true }),
   };
 }
@@ -115,7 +117,7 @@ export function buildApiPhotoSize(photoSize: GramJs.PhotoSize): ApiPhotoSize {
   return {
     width: w,
     height: h,
-    type: type as ('m' | 'x' | 'y'),
+    type: type as ('s' | 'm' | 'x' | 'y' | 'w'),
   };
 }
 
@@ -154,6 +156,7 @@ export function buildPrivacyRules(rules: GramJs.TypePrivacyRule[]): ApiPrivacySe
   let allowChatIds: string[] | undefined;
   let blockUserIds: string[] | undefined;
   let blockChatIds: string[] | undefined;
+  let shouldAllowPremium: true | undefined;
 
   const localChats = localDb.chats;
 
@@ -187,6 +190,8 @@ export function buildPrivacyRules(rules: GramJs.TypePrivacyRule[]): ApiPrivacySe
         if (localChats[dialogId]) return dialogId;
         return channelId;
       });
+    } else if (rule instanceof GramJs.PrivacyValueAllowPremium) {
+      shouldAllowPremium = true;
     }
   });
 
@@ -203,6 +208,7 @@ export function buildPrivacyRules(rules: GramJs.TypePrivacyRule[]): ApiPrivacySe
     allowChatIds: allowChatIds || [],
     blockUserIds: blockUserIds || [],
     blockChatIds: blockChatIds || [],
+    shouldAllowPremium,
   };
 }
 
@@ -253,6 +259,15 @@ export function buildApiMessageEntity(entity: GramJs.TypeMessageEntity): ApiMess
       offset,
       length,
       documentId: entity.documentId.toString(),
+    };
+  }
+
+  if (entity instanceof GramJs.MessageEntityBlockquote) {
+    return {
+      type: ApiMessageEntityTypes.Blockquote,
+      canCollapse: entity.collapsed,
+      offset,
+      length,
     };
   }
 

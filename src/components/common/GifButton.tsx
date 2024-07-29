@@ -7,6 +7,7 @@ import type { ApiVideo } from '../../api/types';
 import type { ObserveFn } from '../../hooks/useIntersectionObserver';
 import { ApiMediaFormat } from '../../api/types';
 
+import { getVideoMediaHash } from '../../global/helpers';
 import buildClassName from '../../util/buildClassName';
 import { IS_TOUCH_ENV } from '../../util/windowEnvironment';
 import { preventMessageInputBlurWithBubbling } from '../middle/helpers/preventMessageInputBlur';
@@ -15,10 +16,10 @@ import useBuffering from '../../hooks/useBuffering';
 import useCanvasBlur from '../../hooks/useCanvasBlur';
 import useContextMenuHandlers from '../../hooks/useContextMenuHandlers';
 import { useIsIntersecting } from '../../hooks/useIntersectionObserver';
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
 import useMedia from '../../hooks/useMedia';
 import useMenuPosition from '../../hooks/useMenuPosition';
+import useOldLang from '../../hooks/useOldLang';
 
 import Button from '../ui/Button';
 import Menu from '../ui/Menu';
@@ -50,15 +51,14 @@ const GifButton: FC<OwnProps> = ({
   // eslint-disable-next-line no-null/no-null
   const ref = useRef<HTMLDivElement>(null);
 
-  const lang = useLang();
+  const lang = useOldLang();
 
-  const localMediaHash = `gif${gif.id}`;
   const isIntersecting = useIsIntersecting(ref, observeIntersection);
   const loadAndPlay = isIntersecting && !isDisabled;
-  const previewBlobUrl = useMedia(`${localMediaHash}?size=m`, !loadAndPlay, ApiMediaFormat.BlobUrl);
+  const previewBlobUrl = useMedia(getVideoMediaHash(gif, 'preview'), !loadAndPlay, ApiMediaFormat.BlobUrl);
   const [withThumb] = useState(gif.thumbnail?.dataUri && !previewBlobUrl);
   const thumbRef = useCanvasBlur(gif.thumbnail?.dataUri, !withThumb);
-  const videoData = useMedia(localMediaHash, !loadAndPlay, ApiMediaFormat.BlobUrl);
+  const videoData = useMedia(getVideoMediaHash(gif, 'full'), !loadAndPlay, ApiMediaFormat.BlobUrl);
   const shouldRenderVideo = Boolean(loadAndPlay && videoData);
   const { isBuffered, bufferingHandlers } = useBuffering(true);
   const shouldRenderSpinner = loadAndPlay && !isBuffered;
@@ -128,7 +128,6 @@ const GifButton: FC<OwnProps> = ({
     'GifButton',
     gif.width && gif.height && gif.width < gif.height ? 'vertical' : 'horizontal',
     onClick && 'interactive',
-    localMediaHash,
     className,
   );
 
@@ -154,7 +153,7 @@ const GifButton: FC<OwnProps> = ({
       {withThumb && (
         <canvas
           ref={thumbRef}
-          className="thumbnail"
+          className="thumbnail canvas-blur-setup"
           // We need to always render to avoid blur re-calculation
           style={isVideoReady ? 'display: none;' : undefined}
         />

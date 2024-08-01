@@ -12,7 +12,8 @@ import generateUniqueId from '../../../util/generateUniqueId';
 import getIsAppUpdateNeeded from '../../../util/getIsAppUpdateNeeded';
 import getReadableErrorText from '../../../util/getReadableErrorText';
 import { compact, unique } from '../../../util/iteratees';
-import * as langProvider from '../../../util/langProvider';
+import { refreshFromCache } from '../../../util/localization';
+import * as langProvider from '../../../util/oldLangProvider';
 import updateIcon from '../../../util/updateIcon';
 import { setPageTitle, setPageTitleInstant } from '../../../util/updatePageTitle';
 import { IS_ELECTRON } from '../../../util/windowEnvironment';
@@ -24,9 +25,11 @@ import { updateTabState } from '../../reducers/tabs';
 import {
   selectCanAnimateInterface,
   selectChat,
+  selectChatFullInfo,
   selectChatMessage,
   selectCurrentChat,
   selectCurrentMessageList,
+  selectIsCurrentUserPremium,
   selectIsTrustedBot,
   selectTabState,
 } from '../../selectors';
@@ -34,6 +37,7 @@ import {
 import { getIsMobile, getIsTablet } from '../../../hooks/useAppLayout';
 
 export const APP_VERSION_URL = 'version.txt';
+const FLOOD_PREMIUM_WAIT_NOTIFICATION_DURATION = 6000;
 const MAX_STORED_EMOJIS = 8 * 4; // Represents four rows of recent emojis
 
 addActionHandler('toggleChatInfo', (global, actions, payload): ActionReturnType => {
@@ -319,11 +323,12 @@ addActionHandler('showAllowedMessageTypesNotification', (global, actions, payloa
 
   const chat = selectChat(global, chatId);
   if (!chat) return;
+  const chatFullInfo = selectChatFullInfo(global, chatId);
 
   const {
     canSendPlainText, canSendPhotos, canSendVideos, canSendDocuments, canSendAudios,
     canSendStickers, canSendRoundVideos, canSendVoices,
-  } = getAllowedAttachmentOptions(chat);
+  } = getAllowedAttachmentOptions(chat, chatFullInfo);
   const allowedContent = compact([
     canSendPlainText ? 'Chat.SendAllowedContentTypeText' : undefined,
     canSendPhotos ? 'Chat.SendAllowedContentTypePhoto' : undefined,
@@ -333,21 +338,21 @@ addActionHandler('showAllowedMessageTypesNotification', (global, actions, payloa
     canSendDocuments ? 'Chat.SendAllowedContentTypeFile' : undefined,
     canSendAudios ? 'Chat.SendAllowedContentTypeMusic' : undefined,
     canSendStickers ? 'Chat.SendAllowedContentTypeSticker' : undefined,
-  ]).map((l) => langProvider.translate(l));
+  ]).map((l) => langProvider.oldTranslate(l));
 
   if (!allowedContent.length) {
     actions.showNotification({
-      message: langProvider.translate('Chat.SendNotAllowedText'),
+      message: langProvider.oldTranslate('Chat.SendNotAllowedText'),
       tabId,
     });
     return;
   }
 
-  const lastDelimiter = langProvider.translate('AutoDownloadSettings.LastDelimeter');
+  const lastDelimiter = langProvider.oldTranslate('AutoDownloadSettings.LastDelimeter');
   const allowedContentString = allowedContent.join(', ').replace(/,([^,]*)$/, `${lastDelimiter}$1`);
 
   actions.showNotification({
-    message: langProvider.translate('Chat.SendAllowedContentText', allowedContentString),
+    message: langProvider.oldTranslate('Chat.SendAllowedContentText', allowedContentString),
     tabId,
   });
 });
@@ -481,7 +486,7 @@ addActionHandler('requestConfetti', (global, actions, payload): ActionReturnType
 
 addActionHandler('updateAttachmentSettings', (global, actions, payload): ActionReturnType => {
   const {
-    shouldCompress, shouldSendGrouped,
+    shouldCompress, shouldSendGrouped, isInvertedMedia,
   } = payload;
 
   return {
@@ -489,8 +494,54 @@ addActionHandler('updateAttachmentSettings', (global, actions, payload): ActionR
     attachmentSettings: {
       shouldCompress: shouldCompress ?? global.attachmentSettings.shouldCompress,
       shouldSendGrouped: shouldSendGrouped ?? global.attachmentSettings.shouldSendGrouped,
+      isInvertedMedia,
     },
   };
+});
+
+addActionHandler('requestEffectInComposer', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId() } = payload;
+
+  return updateTabState(global, {
+    shouldPlayEffectInComposer: true,
+  }, tabId);
+});
+
+addActionHandler('hideEffectInComposer', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId() } = payload;
+
+  return updateTabState(global, {
+    shouldPlayEffectInComposer: undefined,
+  }, tabId);
+});
+
+addActionHandler('setReactionEffect', (global, actions, payload): ActionReturnType => {
+  const {
+    chatId, threadId, reaction, tabId = getCurrentTabId(),
+  } = payload;
+
+  const emoticon = reaction && 'emoticon' in reaction && reaction.emoticon;
+  if (!emoticon) return;
+
+  const effect = Object.values(global.availableEffectById)
+    .find((currentEffect) => currentEffect.effectAnimationId && currentEffect.emoticon === emoticon);
+
+  const effectId = effect?.id;
+
+  const isCurrentUserPremium = selectIsCurrentUserPremium(global);
+  if (effect?.isPremium && !isCurrentUserPremium) {
+    actions.openPremiumModal({
+      initialSection: 'effects',
+      tabId,
+    });
+    return;
+  }
+
+  if (!effectId) return;
+
+  actions.requestEffectInComposer({ tabId });
+
+  actions.saveEffectInDraft({ chatId, threadId, effectId });
 });
 
 addActionHandler('openLimitReachedModal', (global, actions, payload): ActionReturnType => {
@@ -720,7 +771,7 @@ addActionHandler('updatePageTitle', (global, actions, payload): ActionReturnType
     const { chatId, threadId } = messageList;
     const currentChat = selectChat(global, chatId);
     if (currentChat) {
-      const title = getChatTitle(langProvider.translate, currentChat, chatId === currentUserId);
+      const title = getChatTitle(langProvider.oldTranslate, currentChat, chatId === currentUserId);
       if (currentChat.isForum && currentChat.topics?.[threadId]) {
         setPageTitle(`${title} › ${currentChat.topics[threadId].title}`);
         return;
@@ -739,6 +790,61 @@ addActionHandler('closeInviteViaLinkModal', (global, actions, payload): ActionRe
   return updateTabState(global, {
     inviteViaLinkModal: undefined,
   }, tabId);
+});
+
+addActionHandler('closeCollectibleInfoModal', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId() } = payload ?? {};
+  return updateTabState(global, {
+    collectibleInfoModal: undefined,
+  }, tabId);
+});
+
+addActionHandler('setShouldCloseRightColumn', (global, actions, payload): ActionReturnType => {
+  const { value, tabId = getCurrentTabId() } = payload;
+  return updateTabState(global, {
+    shouldCloseRightColumn: value,
+  }, tabId);
+});
+
+addActionHandler('refreshLangPackFromCache', (global, actions, payload): ActionReturnType => {
+  refreshFromCache(payload.langCode);
+});
+
+addActionHandler('processPremiumFloodWait', (global, actions, payload): ActionReturnType => {
+  const { isUpload } = payload;
+  const {
+    bandwidthPremiumDownloadSpeedup,
+    bandwidthPremiumUploadSpeedup,
+    bandwidthPremiumNotifyPeriod,
+  } = global.appConfig || {};
+  const { lastPremiumBandwithNotificationDate: lastNotifiedAt } = global.settings;
+
+  if (!bandwidthPremiumDownloadSpeedup || !bandwidthPremiumUploadSpeedup || !bandwidthPremiumNotifyPeriod) {
+    return undefined;
+  }
+  if (lastNotifiedAt && Date.now() < lastNotifiedAt + bandwidthPremiumNotifyPeriod * 1000) return undefined;
+
+  const unblurredTabIds = Object.values(global.byTabId).filter((l) => !l.isBlurred).map((l) => l.id);
+
+  unblurredTabIds.forEach((tabId) => {
+    actions.showNotification({
+      title: langProvider.oldTranslate(isUpload ? 'UploadSpeedLimited' : 'DownloadSpeedLimited'),
+      message: langProvider.oldTranslate(
+        isUpload ? 'UploadSpeedLimitedMessage' : 'DownloadSpeedLimitedMessage',
+        isUpload ? bandwidthPremiumUploadSpeedup : bandwidthPremiumDownloadSpeedup,
+      ),
+      duration: FLOOD_PREMIUM_WAIT_NOTIFICATION_DURATION,
+      tabId,
+    });
+  });
+
+  return {
+    ...global,
+    settings: {
+      ...global.settings,
+      lastPremiumBandwithNotificationDate: Date.now(),
+    },
+  };
 });
 
 let prevIsScreenLocked: boolean | undefined;

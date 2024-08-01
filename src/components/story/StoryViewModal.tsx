@@ -22,8 +22,8 @@ import renderText from '../common/helpers/renderText';
 
 import useDebouncedCallback from '../../hooks/useDebouncedCallback';
 import useFlag from '../../hooks/useFlag';
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 import useScrolledState from '../../hooks/useScrolledState';
 
 import Button from '../ui/Button';
@@ -58,14 +58,14 @@ function StoryViewModal({
   isCurrentUserPremium,
 }: StateProps) {
   const {
-    loadStoryViews, closeStoryViewModal, clearStoryViews,
+    loadStoryViewList, closeStoryViewModal, clearStoryViews,
   } = getActions();
 
   const [areJustContacts, markJustContacts, unmarkJustContacts] = useFlag(false);
   const [areReactionsFirst, markReactionsFirst, unmarkReactionsFirst] = useFlag(true);
   const [query, setQuery] = useState('');
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const isOpen = Boolean(story);
   const isExpired = Boolean(story?.date) && (story!.date + viewersExpirePeriod) < getServerTime();
@@ -102,7 +102,7 @@ function StoryViewModal({
 
   const handleLoadMore = useLastCallback(() => {
     if (!story?.id || nextOffset === undefined) return;
-    loadStoryViews({
+    loadStoryViewList({
       peerId: story.peerId,
       storyId: story.id,
       offset: nextOffset,
@@ -287,7 +287,7 @@ export default memo(withGlobal((global) => {
     story: story && 'content' in story ? story : undefined,
     nextOffset,
     isLoading,
-    availableReactions: global.availableReactions,
+    availableReactions: global.reactions.availableReactions,
     isCurrentUserPremium: selectIsCurrentUserPremium(global),
   };
 })(StoryViewModal));

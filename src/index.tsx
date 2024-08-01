@@ -15,6 +15,7 @@ import { enableStrict, requestMutation } from './lib/fasterdom/fasterdom';
 import { selectTabState } from './global/selectors';
 import { betterView } from './util/betterView';
 import { establishMultitabRole, subscribeToMasterChange } from './util/establishMultitabRole';
+import { initLocalization } from './util/localization';
 import { requestGlobal, subscribeToMultitabBroadcastChannel } from './util/multitab';
 import { checkAndAssignPermanentWebVersion } from './util/permanentWebVersion';
 import { onBeforeUnload } from './util/schedulers';
@@ -46,7 +47,6 @@ async function init() {
 
   if (IS_MULTITAB_SUPPORTED) {
     subscribeToMultitabBroadcastChannel();
-
     await requestGlobal(APP_VERSION);
     localStorage.setItem(MULTITAB_LOCALSTORAGE_KEY, '1');
     onBeforeUnload(() => {
@@ -63,12 +63,17 @@ async function init() {
   getActions().updateShouldEnableDebugLog();
   getActions().updateShouldDebugExportedSenders();
 
+  const global = getGlobal();
+
+  initLocalization(global.settings.byKey.language, true);
+
   if (IS_MULTITAB_SUPPORTED) {
-    establishMultitabRole();
     subscribeToMasterChange((isMasterTab) => {
       getActions()
         .switchMultitabRole({ isMasterTab }, { forceSyncOnIOs: true });
     });
+    const shouldReestablishMasterToSelf = getGlobal().authState !== 'authorizationStateReady';
+    establishMultitabRole(shouldReestablishMasterToSelf);
   }
 
   if (DEBUG) {

@@ -17,21 +17,22 @@ import {
   selectGiftStickerForDuration,
 } from '../../../global/selectors';
 import buildClassName from '../../../util/buildClassName';
-import { formatDateAtTime, formatDateTimeToString } from '../../../util/dateFormat';
-import { isoToEmoji } from '../../../util/emoji';
+import { formatDateAtTime, formatDateTimeToString } from '../../../util/dates/dateFormat';
+import { isoToEmoji } from '../../../util/emoji/emoji';
 import { getServerTime } from '../../../util/serverTime';
 import { callApi } from '../../../api/gramjs';
 import { LOCAL_TGS_URLS } from '../../common/helpers/animatedAssets';
 import renderText from '../../common/helpers/renderText';
 
-import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
+import useOldLang from '../../../hooks/useOldLang';
 
-import AnimatedIcon from '../../common/AnimatedIcon';
 import AnimatedIconFromSticker from '../../common/AnimatedIconFromSticker';
+import AnimatedIconWithPreview from '../../common/AnimatedIconWithPreview';
 import PickerSelectedItem from '../../common/PickerSelectedItem';
 import Button from '../../ui/Button';
 import ConfirmDialog from '../../ui/ConfirmDialog';
+import Separator from '../../ui/Separator';
 
 import styles from './Giveaway.module.scss';
 
@@ -62,7 +63,7 @@ const Giveaway = ({
   const isLoadingInfo = useRef(false);
   const [giveawayInfo, setGiveawayInfo] = useState<ApiGiveawayInfo | undefined>();
 
-  const lang = useLang();
+  const lang = useOldLang();
   const { giveaway, giveawayResults } = message.content;
   const isResults = Boolean(giveawayResults);
   const {
@@ -124,7 +125,7 @@ const Giveaway = ({
                   ['simple_markdown'],
                 )}
               </p>
-              <div className={styles.separator}>{lang('BoostingGiveawayMsgWithDivider')}</div>
+              <Separator>{lang('BoostingGiveawayMsgWithDivider')}</Separator>
             </>
           )}
           <p className={styles.description}>
@@ -303,7 +304,7 @@ const Giveaway = ({
     <div className={styles.root}>
       <div className={buildClassName(styles.sticker, isResults && styles.resultSticker)}>
         {isResults ? (
-          <AnimatedIcon
+          <AnimatedIconWithPreview
             size={RESULT_STICKER_SIZE}
             tgsUrl={LOCAL_TGS_URLS.PartyPopper}
             nonInteractive

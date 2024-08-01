@@ -8,12 +8,13 @@ import {
 } from '../../../config';
 import EMOJI_REGEX from '../../../lib/twemojiRegex';
 import buildClassName from '../../../util/buildClassName';
+import { isDeepLink } from '../../../util/deepLinkParser';
 import {
-  fixNonStandardEmoji,
   handleEmojiLoad,
   LOADED_EMOJIS,
   nativeToUnifiedExtendedWithCache,
-} from '../../../util/emoji';
+} from '../../../util/emoji/emoji';
+import fixNonStandardEmoji from '../../../util/emoji/fixNonStandardEmoji';
 import { compact } from '../../../util/iteratees';
 import { IS_EMOJI_SUPPORTED } from '../../../util/windowEnvironment';
 
@@ -22,7 +23,7 @@ import SafeLink from '../SafeLink';
 
 export type TextFilter = (
   'escape_html' | 'hq_emoji' | 'emoji' | 'emoji_html' | 'br' | 'br_html' | 'highlight' | 'links' |
-  'simple_markdown' | 'simple_markdown_html' | 'quote'
+  'simple_markdown' | 'simple_markdown_html' | 'quote' | 'tg_links'
   );
 
 const SIMPLE_MARKDOWN_REGEX = /(\*\*|__).+?\1/g;
@@ -30,7 +31,7 @@ const SIMPLE_MARKDOWN_REGEX = /(\*\*|__).+?\1/g;
 export default function renderText(
   part: TextPart,
   filters: Array<TextFilter> = ['emoji'],
-  params?: { highlight?: string; quote?: string },
+  params?: { highlight?: string; quote?: string; markdownPostProcessor?: (part: string) => TeactNode },
 ): TeactNode[] {
   if (typeof part !== 'string') {
     return [part];
@@ -68,8 +69,11 @@ export default function renderText(
       case 'links':
         return addLinks(text);
 
+      case 'tg_links':
+        return addLinks(text, true);
+
       case 'simple_markdown':
-        return replaceSimpleMarkdown(text, 'jsx');
+        return replaceSimpleMarkdown(text, 'jsx', params?.markdownPostProcessor);
 
       case 'simple_markdown_html':
         return replaceSimpleMarkdown(text, 'html');
@@ -214,7 +218,7 @@ function addHighlight(textParts: TextPart[], highlight: string | undefined, isQu
 
 const RE_LINK = new RegExp(`${RE_LINK_TEMPLATE}|${RE_MENTION_TEMPLATE}`, 'ig');
 
-function addLinks(textParts: TextPart[]): TextPart[] {
+function addLinks(textParts: TextPart[], allowOnlyTgLinks?: boolean): TextPart[] {
   return textParts.reduce<TextPart[]>((result, part) => {
     if (typeof part !== 'string') {
       result.push(part);
@@ -245,9 +249,13 @@ function addLinks(textParts: TextPart[]): TextPart[] {
           nextLink = nextLink.slice(0, nextLink.length - 1);
         }
 
-        content.push(
-          <SafeLink text={nextLink} url={nextLink} />,
-        );
+        if (!allowOnlyTgLinks || isDeepLink(nextLink)) {
+          content.push(
+            <SafeLink text={nextLink} url={nextLink} />,
+          );
+        } else {
+          content.push(nextLink);
+        }
       }
       lastIndex = index + nextLink.length;
       nextLink = links.shift();
@@ -258,7 +266,12 @@ function addLinks(textParts: TextPart[]): TextPart[] {
   }, []);
 }
 
-function replaceSimpleMarkdown(textParts: TextPart[], type: 'jsx' | 'html'): TextPart[] {
+function replaceSimpleMarkdown(
+  textParts: TextPart[], type: 'jsx' | 'html', postProcessor?: (part: string) => TeactNode,
+): TextPart[] {
+  // Currently supported only for JSX. If needed, add typings to support HTML as well.
+  const postProcess = postProcessor || ((part: string) => part);
+
   return textParts.reduce<TextPart[]>((result, part) => {
     if (typeof part !== 'string') {
       result.push(part);
@@ -267,14 +280,14 @@ function replaceSimpleMarkdown(textParts: TextPart[], type: 'jsx' | 'html'): Tex
 
     const parts = part.split(SIMPLE_MARKDOWN_REGEX);
     const entities: string[] = part.match(SIMPLE_MARKDOWN_REGEX) || [];
-    result.push(parts[0]);
+    result.push(postProcess(parts[0]));
 
     return entities.reduce((entityResult: TextPart[], entity, i) => {
       if (type === 'jsx') {
         entityResult.push(
           entity.startsWith('**')
-            ? <b>{entity.replace(/\*\*/g, '')}</b>
-            : <i>{entity.replace(/__/g, '')}</i>,
+            ? <b>{postProcess(entity.replace(/\*\*/g, ''))}</b>
+            : <i>{postProcess(entity.replace(/__/g, ''))}</i>,
         );
       } else {
         entityResult.push(
@@ -286,7 +299,7 @@ function replaceSimpleMarkdown(textParts: TextPart[], type: 'jsx' | 'html'): Tex
 
       const index = i * 2 + 2;
       if (parts[index]) {
-        entityResult.push(parts[index]);
+        entityResult.push(postProcess(parts[index]));
       }
 
       return entityResult;

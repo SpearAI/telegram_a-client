@@ -21,6 +21,7 @@ import {
   buildApiStealthMode,
   buildApiStory,
   buildApiStoryView,
+  buildApiStoryViews,
 } from '../apiBuilders/stories';
 import { buildApiUser } from '../apiBuilders/users';
 import {
@@ -76,15 +77,15 @@ export async function fetchAllStories({
   const allUserStories = result.peerStories.reduce<Record<string, ApiPeerStories>>((acc, peerStories) => {
     const peerId = getApiChatIdFromMtpPeer(peerStories.peer);
     const stories = buildApiPeerStories(peerStories);
-    const { pinnedIds, orderedIds, lastUpdatedAt } = Object.values(stories).reduce<
+    const { profileIds, orderedIds, lastUpdatedAt } = Object.values(stories).reduce<
     {
-      pinnedIds: number[];
+      profileIds: number[];
       orderedIds: number[];
       lastUpdatedAt?: number;
     }
     >((dataAcc, story) => {
-      if ('isPinned' in story && story.isPinned) {
-        dataAcc.pinnedIds.push(story.id);
+      if ('isInProfile' in story && story.isInProfile) {
+        dataAcc.profileIds.push(story.id);
       }
       if (!('isDeleted' in story)) {
         dataAcc.orderedIds.push(story.id);
@@ -93,7 +94,7 @@ export async function fetchAllStories({
 
       return dataAcc;
     }, {
-      pinnedIds: [],
+      profileIds: [],
       orderedIds: [],
       lastUpdatedAt: undefined,
     });
@@ -105,7 +106,7 @@ export async function fetchAllStories({
     acc[peerId] = {
       byId: stories,
       orderedIds,
-      pinnedIds,
+      profileIds,
       lastUpdatedAt,
       lastReadId: peerStories.maxReadId,
     };
@@ -153,7 +154,7 @@ export async function fetchPeerStories({
   };
 }
 
-export function fetchPeerPinnedStories({
+export function fetchPeerProfileStories({
   peer, offsetId,
 }: {
   peer: ApiPeer;
@@ -220,6 +221,7 @@ export async function fetchPeerStoriesByIds({ peer, ids }: { peer: ApiPeer; ids:
   return {
     chats,
     users,
+    pinnedIds: result.pinnedToTop,
     stories,
   };
 }
@@ -245,11 +247,26 @@ export function deleteStory({ peer, storyId }: { peer: ApiPeer; storyId: number 
   }));
 }
 
-export function toggleStoryPinned({ peer, storyId, isPinned }: { peer: ApiPeer; storyId: number; isPinned?: boolean }) {
+export function toggleStoryInProfile({
+  peer, storyId, isInProfile,
+}: {
+  peer: ApiPeer; storyId: number; isInProfile?: boolean;
+}) {
   return invokeRequest(new GramJs.stories.TogglePinned({
     peer: buildInputPeer(peer.id, peer.accessHash),
     id: [storyId],
-    pinned: isPinned,
+    pinned: isInProfile,
+  }));
+}
+
+export function toggleStoryPinnedToTop({
+  peer, storyIds,
+}: {
+  peer: ApiPeer; storyIds: number[];
+}) {
+  return invokeRequest(new GramJs.stories.TogglePinnedToTop({
+    peer: buildInputPeer(peer.id, peer.accessHash),
+    id: storyIds,
   }));
 }
 
@@ -297,6 +314,33 @@ export async function fetchStoryViewList({
     nextOffset: result.nextOffset,
     reactionsCount: result.reactionsCount,
     viewsCount: result.count,
+  };
+}
+
+export async function fetchStoriesViews({
+  peer,
+  storyIds,
+}: {
+  peer: ApiPeer;
+  storyIds: number[];
+}) {
+  const result = await invokeRequest(new GramJs.stories.GetStoriesViews({
+    peer: buildInputPeer(peer.id, peer.accessHash),
+    id: storyIds,
+  }));
+
+  if (!result?.views[0]) {
+    return undefined;
+  }
+
+  addEntitiesToLocalDb(result.users);
+
+  const views = buildApiStoryViews(result.views[0]);
+  const users = result.users.map(buildApiUser).filter(Boolean);
+
+  return {
+    views,
+    users,
   };
 }
 
@@ -367,7 +411,7 @@ export function fetchStoriesMaxIds({
 }) {
   return invokeRequest(new GramJs.stories.GetPeerMaxIDs({
     id: peers.map((peer) => buildInputPeer(peer.id, peer.accessHash)),
-  }));
+  }), { shouldIgnoreErrors: true });
 }
 
 async function fetchCommonStoriesRequest({ method, peerId }: {
@@ -394,6 +438,7 @@ async function fetchCommonStoriesRequest({ method, peerId }: {
     users,
     chats,
     stories,
+    pinnedIds: result.pinnedToTop,
   };
 }
 

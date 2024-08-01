@@ -5,11 +5,11 @@ import { getGlobal } from '../../global';
 import type { ApiSticker } from '../../api/types';
 import type { ObserveFn } from '../../hooks/useIntersectionObserver';
 
-import { getStickerPreviewHash } from '../../global/helpers';
+import { getStickerMediaHash } from '../../global/helpers';
 import { selectIsAlwaysHighPriorityEmoji } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
 import * as mediaLoader from '../../util/mediaLoader';
-import { IS_ANDROID, IS_WEBM_SUPPORTED } from '../../util/windowEnvironment';
+import { IS_WEBM_SUPPORTED } from '../../util/windowEnvironment';
 
 import useColorFilter from '../../hooks/stickers/useColorFilter';
 import useCoordsInSharedCanvas from '../../hooks/useCoordsInSharedCanvas';
@@ -86,7 +86,7 @@ const StickerView: FC<OwnProps> = ({
   const isUnsupportedVideo = sticker.isVideo && (!IS_WEBM_SUPPORTED || isVideoBroken);
   const isVideo = sticker.isVideo && !isUnsupportedVideo;
   const isStatic = !isLottie && !isVideo;
-  const previewMediaHash = getStickerPreviewHash(sticker.id);
+  const previewMediaHash = getStickerMediaHash(sticker, 'preview');
 
   const dpr = useDevicePixelRatio();
 
@@ -115,8 +115,8 @@ const StickerView: FC<OwnProps> = ({
   const fullMediaData = useMedia(fullMediaHash, !shouldLoad || shouldSkipFullMedia);
   // If Lottie data is loaded we will only render thumb if it's good enough (from preview)
   const [isPlayerReady, markPlayerReady] = useFlag(Boolean(isLottie && fullMediaData && !previewMediaData));
-  // Delay mounting on Android until heavy animation ends
-  const [isReadyToMount, markReadyToMount, unmarkReadyToMount] = useFlag(!IS_ANDROID || !isHeavyAnimating());
+  // Delay mounting until heavy animation ends
+  const [isReadyToMount, markReadyToMount, unmarkReadyToMount] = useFlag(!isHeavyAnimating());
   useHeavyAnimationCheck(unmarkReadyToMount, markReadyToMount, isReadyToMount);
   const isFullMediaReady = isReadyToMount && fullMediaData && (isStatic || isPlayerReady);
 
@@ -180,12 +180,12 @@ const StickerView: FC<OwnProps> = ({
         />
       ) : isVideo ? (
         <OptimizedVideo
-          canPlay={shouldPlay && shouldLoop}
+          canPlay={shouldPlay}
           className={buildClassName(styles.media, fullMediaClassName, fullMediaClassNames, 'sticker-media')}
           src={fullMediaData}
           playsInline
           muted
-          loop={!loopLimit}
+          loop={shouldLoop && !loopLimit}
           isPriority={forceAlways}
           disablePictureInPicture
           onReady={markPlayerReady}

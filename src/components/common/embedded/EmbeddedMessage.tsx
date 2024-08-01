@@ -3,12 +3,13 @@ import React, { useMemo, useRef } from '../../../lib/teact/teact';
 
 import type {
   ApiChat,
-  ApiMessage, ApiPeer, ApiReplyInfo,
+  ApiMessage, ApiPeer, ApiReplyInfo, MediaContainer,
 } from '../../../api/types';
 import type { ChatTranslatedMessages } from '../../../global/types';
 import type { ObserveFn } from '../../../hooks/useIntersectionObserver';
 import type { IconName } from '../../../types/icons';
 
+import { CONTENT_NOT_SUPPORTED } from '../../../config';
 import {
   getMessageIsSpoiler,
   getMessageMediaHash,
@@ -18,7 +19,9 @@ import {
   isChatChannel,
   isChatGroup,
   isMessageTranslatable,
+  isUserId,
 } from '../../../global/helpers';
+import { getMediaContentTypeDescription } from '../../../global/helpers/messageSummary';
 import buildClassName from '../../../util/buildClassName';
 import freezeWhenClosed from '../../../util/hoc/freezeWhenClosed';
 import { getPictogramDimensions } from '../helpers/mediaDimensions';
@@ -28,13 +31,13 @@ import { renderTextWithEntities } from '../helpers/renderTextWithEntities';
 
 import { useFastClick } from '../../../hooks/useFastClick';
 import { useIsIntersecting } from '../../../hooks/useIntersectionObserver';
-import useLang from '../../../hooks/useLang';
 import useMedia from '../../../hooks/useMedia';
+import useOldLang from '../../../hooks/useOldLang';
 import useThumbnail from '../../../hooks/useThumbnail';
 import useMessageTranslation from '../../middle/message/hooks/useMessageTranslation';
 
 import ActionMessage from '../../middle/ActionMessage';
-import Icon from '../Icon';
+import Icon from '../icons/Icon';
 import MediaSpoiler from '../MediaSpoiler';
 import MessageSummary from '../MessageSummary';
 import EmojiIconBackground from './EmojiIconBackground';
@@ -58,7 +61,7 @@ type OwnProps = {
   isOpen?: boolean;
   observeIntersectionForLoading?: ObserveFn;
   observeIntersectionForPlaying?: ObserveFn;
-  onClick: NoneToVoidFunction;
+  onClick: ((e: React.MouseEvent) => void);
 };
 
 const NBSP = '\u00A0';
@@ -86,16 +89,20 @@ const EmbeddedMessage: FC<OwnProps> = ({
   const ref = useRef<HTMLDivElement>(null);
   const isIntersecting = useIsIntersecting(ref, observeIntersectionForLoading);
 
-  const wrappedMedia = useMemo(() => {
-    const replyMedia = replyInfo?.type === 'message' && replyInfo.replyMedia;
-    if (!replyMedia) return undefined;
-    return {
-      content: replyMedia,
-    };
-  }, [replyInfo]);
+  const containedMedia: MediaContainer | undefined = useMemo(() => {
+    const media = (replyInfo?.type === 'message' && replyInfo.replyMedia) || message?.content;
+    if (!media) {
+      return undefined;
+    }
 
-  const mediaBlobUrl = useMedia(message && getMessageMediaHash(message, 'pictogram'), !isIntersecting);
-  const mediaThumbnail = useThumbnail(message || wrappedMedia);
+    return {
+      content: media,
+    };
+  }, [message, replyInfo]);
+
+  const mediaHash = containedMedia && getMessageMediaHash(containedMedia, 'pictogram');
+  const mediaBlobUrl = useMedia(mediaHash, !isIntersecting);
+  const mediaThumbnail = useThumbnail(containedMedia);
   const isRoundVideo = Boolean(message && getMessageRoundVideo(message));
   const isSpoiler = Boolean(message && getMessageIsSpoiler(message));
   const isQuote = Boolean(replyInfo?.type === 'message' && replyInfo.isQuote);
@@ -106,14 +113,14 @@ const EmbeddedMessage: FC<OwnProps> = ({
     chatTranslations, message?.chatId, shouldTranslate ? message?.id : undefined, requestedChatTranslationLanguage,
   );
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const senderTitle = sender ? getSenderTitle(lang, sender)
     : (replyForwardInfo?.hiddenUserName || message?.forwardInfo?.hiddenUserName);
-  const senderChatTitle = senderChat ? getSenderTitle(lang, senderChat) : message?.forwardInfo?.hiddenUserName;
+  const senderChatTitle = senderChat ? getSenderTitle(lang, senderChat) : undefined;
   const forwardSenderTitle = forwardSender ? getSenderTitle(lang, forwardSender)
     : message?.forwardInfo?.hiddenUserName;
-  const areSendersSame = sender?.id === forwardSender?.id;
+  const areSendersSame = sender && sender.id === forwardSender?.id;
 
   const { handleClick, handleMouseDown } = useFastClick(onClick);
 
@@ -123,11 +130,12 @@ const EmbeddedMessage: FC<OwnProps> = ({
         text: replyInfo.quoteText.text,
         entities: replyInfo.quoteText.entities,
         noLineBreaks: isInComposer,
+        emojiSize: EMOJI_SIZE,
       });
     }
 
     if (!message) {
-      return customText || NBSP;
+      return customText || renderMediaContentType(containedMedia) || NBSP;
     }
 
     if (isActionMessage(message)) {
@@ -154,6 +162,23 @@ const EmbeddedMessage: FC<OwnProps> = ({
     );
   }
 
+  function renderMediaContentType(media?: MediaContainer) {
+    if (!media || media.content.text) return NBSP;
+    const description = getMediaContentTypeDescription(lang, media.content);
+    if (!description || description === CONTENT_NOT_SUPPORTED) return NBSP;
+    return (
+      <span>
+        {renderText(description)}
+      </span>
+    );
+  }
+
+  function checkShouldRenderSenderTitle() {
+    if (!senderChat) return true;
+    if (isUserId(senderChat?.id)) return true;
+    if (senderChat.id === sender?.id) return false;
+    return true;
+  }
   function renderSender() {
     if (title) {
       return renderText(title);
@@ -174,18 +199,21 @@ const EmbeddedMessage: FC<OwnProps> = ({
       }
     }
 
-    const isChatSender = senderChat?.id === sender?.id;
     const isReplyToQuote = isInComposer && Boolean(replyInfo && 'quoteText' in replyInfo && replyInfo?.quoteText);
 
     return (
       <>
-        {!isChatSender && (
+        {checkShouldRenderSenderTitle() && (
           <span className="embedded-sender">
             {renderText(isReplyToQuote ? lang('ReplyToQuote', senderTitle) : senderTitle)}
           </span>
         )}
         {icon && <Icon name={icon} className="embedded-chat-icon" />}
-        {icon && senderChatTitle && renderText(senderChatTitle)}
+        {icon && senderChatTitle && (
+          <span className="embedded-sender-chat">
+            {renderText(senderChatTitle)}
+          </span>
+        )}
       </>
     );
   }

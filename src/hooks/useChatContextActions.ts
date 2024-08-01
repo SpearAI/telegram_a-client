@@ -11,7 +11,7 @@ import {
 } from '../global/helpers';
 import { compact } from '../util/iteratees';
 import { IS_ELECTRON, IS_OPEN_IN_NEW_TAB_SUPPORTED } from '../util/windowEnvironment';
-import useLang from './useLang';
+import useOldLang from './useOldLang';
 
 const useChatContextActions = ({
   chat,
@@ -22,6 +22,7 @@ const useChatContextActions = ({
   canChangeFolder,
   isSavedDialog,
   currentUserId,
+  isPreview,
   handleDelete,
   handleMute,
   handleChatFolderChange,
@@ -35,12 +36,13 @@ const useChatContextActions = ({
   canChangeFolder?: boolean;
   isSavedDialog?: boolean;
   currentUserId?: string;
+  isPreview?: boolean;
   handleDelete?: NoneToVoidFunction;
   handleMute?: NoneToVoidFunction;
   handleChatFolderChange: NoneToVoidFunction;
   handleReport?: NoneToVoidFunction;
 }, isInSearch = false) => {
-  const lang = useLang();
+  const lang = useOldLang();
 
   const chatIdToCRMEidMap = JSON.parse(localStorage.getItem('crmMapper') || '{}');
 
@@ -66,7 +68,11 @@ const useChatContextActions = ({
   const deleteTitle = useMemo(() => {
     if (!chat) return undefined;
 
-    if (isUserId(chat.id) || isSavedDialog) {
+    if (isSavedDialog) {
+      return lang('Delete');
+    }
+
+    if (isUserId(chat.id)) {
       return lang('DeleteChatUser');
     }
 
@@ -82,7 +88,7 @@ const useChatContextActions = ({
   }, [chat, isSavedDialog, lang]);
 
   return useMemo(() => {
-    if (!chat) {
+    if (!chat || isPreview) {
       return undefined;
     }
 
@@ -205,9 +211,7 @@ const useChatContextActions = ({
   }, [
     chat, user, canChangeFolder, lang, handleChatFolderChange, isPinned, isInSearch, isMuted, currentUserId,
     handleDelete, handleMute, handleReport, folderId, isSelf, isServiceNotifications, isSavedDialog, deleteTitle,
-    chatIdToCRMEidMap,
-    handleAddToCRM,
-    handleOpenInCRM,
+    isPreview,chatIdToCRMEidMap, handleAddToCRM, handleOpenInCRM,
   ]);
 };
 

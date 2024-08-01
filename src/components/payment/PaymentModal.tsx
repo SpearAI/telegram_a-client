@@ -11,15 +11,17 @@ import type { Price, ShippingOption } from '../../types';
 import type { PaymentFormSubmitEvent } from './ConfirmPayment';
 import { PaymentStep } from '../../types';
 
-import { selectChat, selectTabState } from '../../global/selectors';
+import { getUserFullName } from '../../global/helpers';
+import { selectChat, selectTabState, selectUser } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
 import captureKeyboardListeners from '../../util/captureKeyboardListeners';
-import { formatCurrency } from '../../util/formatCurrency';
+import { formatCurrencyAsString } from '../../util/formatCurrency';
 import { detectCardTypeText } from '../common/helpers/detectCardType';
 
 import usePaymentReducer from '../../hooks/reducers/usePaymentReducer';
 import useFlag from '../../hooks/useFlag';
-import useLang from '../../hooks/useLang';
+import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 import usePrevious from '../../hooks/usePrevious';
 
 import Button from '../ui/Button';
@@ -56,13 +58,13 @@ type StateProps = {
   shouldSendEmailToProvider?: boolean;
   currency?: string;
   prices?: Price[];
-  isProviderError: boolean;
+  isProviderError?: boolean;
   needCardholderName?: boolean;
   needCountry?: boolean;
   needZip?: boolean;
   confirmPaymentUrl?: string;
   countryList: ApiCountry[];
-  hasShippingOptions: boolean;
+  hasShippingOptions?: boolean;
   requestId?: string;
   smartGlocalToken?: string;
   stripeId?: string;
@@ -70,6 +72,7 @@ type StateProps = {
   passwordValidUntil?: number;
   isExtendedMedia?: boolean;
   isPaymentFormUrl?: boolean;
+  botName?: string;
 };
 
 type GlobalStateProps = Pick<TabState['payment'], (
@@ -83,7 +86,6 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
   isOpen,
   onClose,
   step,
-  chat,
   shippingOptions,
   savedInfo,
   canSaveCredentials,
@@ -113,6 +115,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
   passwordValidUntil,
   isExtendedMedia,
   isPaymentFormUrl,
+  botName,
 }) => {
   const {
     loadPasswordInfo,
@@ -125,7 +128,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
     setSmartGlocalCardInfo,
   } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const [isModalOpen, openModal, closeModal] = useFlag();
   const [paymentState, paymentDispatch] = usePaymentReducer();
@@ -292,7 +295,6 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
       case PaymentStep.Checkout:
         return (
           <Checkout
-            chat={chat}
             prices={prices}
             dispatch={paymentDispatch}
             shippingPrices={paymentState.shipping && shippingOptions
@@ -309,6 +311,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
             savedCredentials={savedCredentials}
             isTosAccepted={isTosAccepted}
             onAcceptTos={setIsTosAccepted}
+            botName={botName}
           />
         );
       case PaymentStep.SavedPayments:
@@ -338,7 +341,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
             needCardholderName={needCardholderName}
             needCountry={needCountry}
             needZip={needZip}
-            countryList={countryList}
+            countryList={countryList!}
           />
         );
       case PaymentStep.ShippingInfo:
@@ -350,7 +353,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
             needEmail={Boolean(isEmailRequested || shouldSendEmailToProvider)}
             needPhone={Boolean(isPhoneRequested || shouldSendPhoneToProvider)}
             needName={Boolean(isNameRequested)}
-            countryList={countryList}
+            countryList={countryList!}
           />
         );
       case PaymentStep.Shipping:
@@ -389,7 +392,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
     });
   }, [sendCredentialsInfo, paymentState]);
 
-  const handleButtonClick = useCallback(() => {
+  const handleButtonClick = useLastCallback(() => {
     switch (step) {
       case PaymentStep.ShippingInfo:
         setIsLoading(true);
@@ -461,7 +464,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
           return;
         }
 
-        if (isShippingAddressRequested && !paymentState.shipping) {
+        if (isShippingAddressRequested && !paymentState.shipping && shippingOptions?.length) {
           setStep(PaymentStep.Shipping);
           return;
         }
@@ -471,11 +474,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
         break;
       }
     }
-  }, [
-    isEmailRequested, isNameRequested, isPhoneRequested, isShippingAddressRequested, nativeProvider, passwordValidUntil,
-    paymentDispatch, paymentState, requestId, savedInfo, sendCredentials, sendForm, setStep, smartGlocalToken, step,
-    stripeId, twoFaPassword, validatePaymentPassword, validateRequest, isPaymentFormUrl,
-  ]);
+  });
 
   useEffect(() => {
     return step === PaymentStep.ConfirmPassword
@@ -518,7 +517,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
   }, [step, lang]);
 
   const buttonText = step === PaymentStep.Checkout
-    ? lang('Checkout.PayPrice', formatCurrency(totalPrice, currency!, lang.code))
+    ? lang('Checkout.PayPrice', formatCurrencyAsString(totalPrice, currency!, lang.code))
     : lang('Next');
 
   function getIsSubmitDisabled() {
@@ -528,7 +527,7 @@ const PaymentModal: FC<OwnProps & StateProps & GlobalStateProps> = ({
 
     switch (step) {
       case PaymentStep.Checkout:
-        return Boolean(invoice?.isRecurring && !isTosAccepted);
+        return Boolean(invoice?.termsUrl) && !isTosAccepted;
 
       case PaymentStep.PaymentInfo:
         return Boolean(
@@ -647,14 +646,25 @@ export default memo(withGlobal<OwnProps>(
       temporaryPassword,
       isExtendedMedia,
       url,
+      botId,
+      type,
     } = selectTabState(global).payment;
+
+    const countryList = global.countryList.general;
+
+    // Handled in `StarPaymentModal`
+    if (type === 'stars') {
+      return {
+        countryList,
+      };
+    }
 
     let providerName = nativeProvider;
     if (!providerName && url) {
       providerName = url.startsWith(DONATE_PROVIDER_URL) ? DONATE_PROVIDER : undefined;
     }
 
-    const chat = inputInvoice && 'chatId' in inputInvoice ? selectChat(global, inputInvoice.chatId) : undefined;
+    const chat = inputInvoice && 'chatId' in inputInvoice ? selectChat(global, inputInvoice.chatId!) : undefined;
     const isProviderError = Boolean(invoice && (!providerName || !SUPPORTED_PROVIDERS.has(providerName)));
     const { needCardholderName, needCountry, needZip } = (nativeParams || {});
     const {
@@ -667,6 +677,8 @@ export default memo(withGlobal<OwnProps>(
       currency,
       prices,
     } = (invoiceContainer || {});
+    const bot = botId ? selectUser(global, botId) : undefined;
+    const botName = getUserFullName(bot);
 
     return {
       step,
@@ -692,7 +704,7 @@ export default memo(withGlobal<OwnProps>(
       error,
       confirmPaymentUrl: confirmPaymentUrl ?? url,
       isPaymentFormUrl: Boolean(!nativeProvider && url),
-      countryList: global.countryList.general,
+      countryList,
       requestId,
       hasShippingOptions: Boolean(shippingOptions?.length),
       smartGlocalToken: smartGlocalCredentials?.token,
@@ -700,6 +712,7 @@ export default memo(withGlobal<OwnProps>(
       savedCredentials,
       passwordValidUntil: temporaryPassword?.validUntil,
       isExtendedMedia,
+      botName,
     };
   },
 )(PaymentModal));

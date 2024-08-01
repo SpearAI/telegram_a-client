@@ -1,24 +1,23 @@
 import type {
-  ApiMessage, ApiSponsoredMessage, ApiThreadInfo,
+  ApiMessage, ApiQuickReply, ApiSponsoredMessage, ApiThreadInfo,
 } from '../../api/types';
-import type { FocusDirection, ThreadId } from '../../types';
+import type { FocusDirection, ScrollTargetPosition, ThreadId } from '../../types';
 import type {
-  GlobalState, MessageList, MessageListType, TabArgs, TabThread,
-  Thread,
+  GlobalState, MessageList, MessageListType, TabArgs, TabState, TabThread, Thread,
 } from '../types';
 import { MAIN_THREAD_ID } from '../../api/types';
 
 import {
-  IS_MOCKED_CLIENT,
-  IS_TEST, MESSAGE_LIST_SLICE, MESSAGE_LIST_VIEWPORT_LIMIT, TMP_CHAT_ID,
+  IS_MOCKED_CLIENT, IS_TEST, MESSAGE_LIST_SLICE, MESSAGE_LIST_VIEWPORT_LIMIT, TMP_CHAT_ID,
 } from '../../config';
 import { getCurrentTabId } from '../../util/establishMultitabRole';
 import {
   areSortedArraysEqual, excludeSortedArray, omit, pick, pickTruthy, unique,
 } from '../../util/iteratees';
+import { isLocalMessageId, type MessageKey } from '../../util/messageKey';
 import {
-  hasMessageTtl,
-  isLocalMessageId, mergeIdRanges, orderHistoryIds, orderPinnedIds,
+  hasMessageTtl, isMediaLoadableInViewer,
+  mergeIdRanges, orderHistoryIds, orderPinnedIds,
 } from '../helpers';
 import {
   selectChat,
@@ -31,10 +30,15 @@ import {
   selectMessageIdsByGroupId,
   selectOutlyingLists,
   selectPinnedIds,
+  selectQuickReplyMessage,
   selectScheduledIds,
-  selectTabState, selectThreadIdFromMessage, selectThreadInfo,
+  selectScheduledMessage,
+  selectTabState,
+  selectThreadIdFromMessage,
+  selectThreadInfo,
   selectViewportIds,
 } from '../selectors';
+import { removeIdFromSearchResults } from './localSearch';
 import { updateTabState } from './tabs';
 import { clearMessageTranslation } from './translations';
 
@@ -207,6 +211,12 @@ export function updateChatMessage<T extends GlobalState>(
         voice: undefined,
         isExpiredVoice: true,
       };
+    } else if (message.content.video?.isRound) {
+      messageUpdate.content = {
+        ...messageUpdate.content,
+        video: undefined,
+        isExpiredRoundVideo: true,
+      };
     }
   }
   const updatedMessage = {
@@ -227,8 +237,7 @@ export function updateChatMessage<T extends GlobalState>(
 export function updateScheduledMessage<T extends GlobalState>(
   global: T, chatId: string, messageId: number, messageUpdate: Partial<ApiMessage>,
 ): T {
-  const byId = selectChatScheduledMessages(global, chatId) || {};
-  const message = byId[messageId];
+  const message = selectScheduledMessage(global, chatId, messageId)!;
   const updatedMessage = {
     ...message,
     ...messageUpdate,
@@ -238,10 +247,41 @@ export function updateScheduledMessage<T extends GlobalState>(
     return global;
   }
 
-  return replaceScheduledMessages(global, chatId, {
-    ...byId,
+  return updateScheduledMessages(global, chatId, {
     [messageId]: updatedMessage,
   });
+}
+
+export function updateQuickReplyMessage<T extends GlobalState>(
+  global: T, messageId: number, messageUpdate: Partial<ApiMessage>,
+): T {
+  const message = selectQuickReplyMessage(global, messageId);
+  const updatedMessage = {
+    ...message,
+    ...messageUpdate,
+  };
+
+  if (!updatedMessage.id) {
+    return global;
+  }
+
+  return updateQuickReplyMessages(global, {
+    [messageId]: updatedMessage,
+  });
+}
+
+export function deleteQuickReplyMessages<T extends GlobalState>(
+  global: T, messageIds: number[],
+): T {
+  const byId = global.quickReplies.messagesById;
+  const newById = omit(byId, messageIds);
+  return {
+    ...global,
+    quickReplies: {
+      ...global.quickReplies,
+      messagesById: newById,
+    },
+  };
 }
 
 export function deleteChatMessages<T extends GlobalState>(
@@ -258,15 +298,20 @@ export function deleteChatMessages<T extends GlobalState>(
   const updatedThreads = new Map<ThreadId, number[]>();
   updatedThreads.set(MAIN_THREAD_ID, messageIds);
 
+  const mediaIdsToRemove: number[] = [];
   messageIds.forEach((messageId) => {
     const message = byId[messageId];
     if (!message) return;
+    if (isMediaLoadableInViewer(message)) {
+      mediaIdsToRemove.push(messageId);
+    }
     const threadId = selectThreadIdFromMessage(global, message);
-    if (!threadId) return;
+    if (!threadId || threadId === MAIN_THREAD_ID) {
+      return;
+    }
     const threadMessages = updatedThreads.get(threadId) || [];
     threadMessages.push(messageId);
     updatedThreads.set(threadId, threadMessages);
-
     global = clearMessageTranslation(global, chatId, messageId);
   });
 
@@ -300,11 +345,22 @@ export function deleteChatMessages<T extends GlobalState>(
     }
 
     Object.values(global.byTabId).forEach(({ id: tabId }) => {
+      mediaIdsToRemove.forEach((mediaId) => {
+        global = removeIdFromSearchResults(global, chatId, threadId, mediaId, tabId);
+      });
+
       const viewportIds = selectViewportIds(global, chatId, threadId, tabId);
       if (!viewportIds) return;
 
       const newViewportIds = excludeSortedArray(viewportIds, messageIds);
-      global = replaceTabThreadParam(global, chatId, threadId, 'viewportIds', newViewportIds, tabId);
+      global = replaceTabThreadParam(
+        global,
+        chatId,
+        threadId,
+        'viewportIds',
+        newViewportIds.length === 0 ? undefined : newViewportIds,
+        tabId,
+      );
     });
 
     global = replaceThreadParam(global, chatId, threadId, 'listedIds', listedIds);
@@ -373,7 +429,17 @@ export function deleteChatScheduledMessages<T extends GlobalState>(
     });
   }
 
-  global = replaceScheduledMessages(global, chatId, newById);
+  global = {
+    ...global,
+    scheduledMessages: {
+      byChatId: {
+        ...global.scheduledMessages.byChatId,
+        [chatId]: {
+          byId: newById,
+        },
+      },
+    },
+  };
 
   return global;
 }
@@ -532,16 +598,8 @@ export function updateThreadInfos<T extends GlobalState>(
   return global;
 }
 
-export function replaceScheduledMessages<T extends GlobalState>(
+export function updateScheduledMessages<T extends GlobalState>(
   global: T, chatId: string, newById: Record<number, ApiMessage>,
-): T {
-  return updateScheduledMessages(global, chatId, {
-    byId: newById,
-  });
-}
-
-function updateScheduledMessages<T extends GlobalState>(
-  global: T, chatId: string, update: Partial<{ byId: Record<number, ApiMessage> }>,
 ): T {
   const current = global.scheduledMessages.byChatId[chatId] || { byId: {}, hash: 0 };
 
@@ -552,8 +610,26 @@ function updateScheduledMessages<T extends GlobalState>(
         ...global.scheduledMessages.byChatId,
         [chatId]: {
           ...current,
-          ...update,
+          byId: {
+            ...current.byId,
+            ...newById,
+          },
         },
+      },
+    },
+  };
+}
+
+export function updateQuickReplyMessages<T extends GlobalState>(
+  global: T, update: Record<number, ApiMessage>,
+): T {
+  return {
+    ...global,
+    quickReplies: {
+      ...global.quickReplies,
+      messagesById: {
+        ...global.quickReplies.messagesById,
+        ...update,
       },
     },
   };
@@ -567,6 +643,7 @@ export function updateFocusedMessage<T extends GlobalState>({
   noHighlight = false,
   isResizingContainer = false,
   quote,
+  scrollTargetPosition,
 }: {
   global: T;
   chatId?: string;
@@ -575,6 +652,7 @@ export function updateFocusedMessage<T extends GlobalState>({
   noHighlight?: boolean;
   isResizingContainer?: boolean;
   quote?: string;
+  scrollTargetPosition?: ScrollTargetPosition;
 },
 ...[tabId = getCurrentTabId()]: TabArgs<T>): T {
   return updateTabState(global, {
@@ -586,6 +664,7 @@ export function updateFocusedMessage<T extends GlobalState>({
       noHighlight,
       isResizingContainer,
       quote,
+      scrollTargetPosition,
     },
   }, tabId);
 }
@@ -601,6 +680,23 @@ export function updateSponsoredMessage<T extends GlobalState>(
         ...global.messages.sponsoredByChatId,
         [chatId]: message,
       },
+    },
+  };
+}
+
+export function deleteSponsoredMessage<T extends GlobalState>(
+  global: T, chatId: string,
+): T {
+  const byChatId = global.messages.sponsoredByChatId;
+  if (!byChatId[chatId]) {
+    return global;
+  }
+
+  return {
+    ...global,
+    messages: {
+      ...global.messages,
+      sponsoredByChatId: omit(byChatId, [chatId]),
     },
   };
 }
@@ -739,24 +835,18 @@ export function updateTopicLastMessageId<T extends GlobalState>(
   };
 }
 
-export function addActiveMessageMediaDownload<T extends GlobalState>(
+export function addActiveMediaDownload<T extends GlobalState>(
   global: T,
-  message: ApiMessage,
+  mediaHash: string,
+  metadata: TabState['activeDownloads'][string],
   ...[tabId = getCurrentTabId()]: TabArgs<T>
 ) {
   const tabState = selectTabState(global, tabId);
-  const byChatId = tabState.activeDownloads.byChatId[message.chatId] || {};
-  const currentIds = (message.isScheduled ? byChatId?.scheduledIds : byChatId?.ids) || [];
 
   global = updateTabState(global, {
     activeDownloads: {
-      byChatId: {
-        ...tabState.activeDownloads.byChatId,
-        [message.chatId]: {
-          ...byChatId,
-          [message.isScheduled ? 'scheduledIds' : 'ids']: unique([...currentIds, message.id]),
-        },
-      },
+      ...tabState.activeDownloads,
+      [mediaHash]: metadata,
     },
   }, tabId);
 
@@ -765,26 +855,63 @@ export function addActiveMessageMediaDownload<T extends GlobalState>(
 
 export function cancelMessageMediaDownload<T extends GlobalState>(
   global: T,
-  message: ApiMessage,
+  mediaHashes: string[],
   ...[tabId = getCurrentTabId()]: TabArgs<T>
 ) {
   const tabState = selectTabState(global, tabId);
-  const byChatId = tabState.activeDownloads.byChatId[message.chatId];
-  if (!byChatId) return global;
 
-  const currentIds = (message.isScheduled ? byChatId.scheduledIds : byChatId.ids) || [];
+  const newActiveDownloads = omit(tabState.activeDownloads, mediaHashes);
 
   global = updateTabState(global, {
-    activeDownloads: {
-      byChatId: {
-        ...tabState.activeDownloads.byChatId,
-        [message.chatId]: {
-          ...byChatId,
-          [message.isScheduled ? 'scheduledIds' : 'ids']: currentIds.filter((id) => id !== message.id),
-        },
-      },
-    },
+    activeDownloads: newActiveDownloads,
   }, tabId);
 
   return global;
+}
+
+export function updateUploadByMessageKey<T extends GlobalState>(
+  global: T,
+  messageKey: MessageKey,
+  progress: number | undefined,
+) {
+  return {
+    ...global,
+    fileUploads: {
+      byMessageKey: progress !== undefined
+        ? {
+          ...global.fileUploads.byMessageKey,
+          [messageKey]: { progress },
+        }
+        : omit(global.fileUploads.byMessageKey, [messageKey]),
+    },
+  };
+}
+
+export function updateQuickReplies<T extends GlobalState>(
+  global: T,
+  quickRepliesUpdate: Record<number, ApiQuickReply>,
+) {
+  return {
+    ...global,
+    quickReplies: {
+      ...global.quickReplies,
+      byId: {
+        ...global.quickReplies.byId,
+        ...quickRepliesUpdate,
+      },
+    },
+  };
+}
+
+export function deleteQuickReply<T extends GlobalState>(
+  global: T,
+  quickReplyId: number,
+) {
+  return {
+    ...global,
+    quickReplies: {
+      ...global.quickReplies,
+      byId: omit(global.quickReplies.byId, [quickReplyId]),
+    },
+  };
 }

@@ -9,11 +9,11 @@ import type { IconName } from '../../types/icons';
 import { getUserFullName, isUserId } from '../../global/helpers';
 import { selectPeer } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
-import { formatDateAtTime } from '../../util/dateFormat';
+import { formatDateAtTime } from '../../util/dates/dateFormat';
 import { REM } from '../common/helpers/mediaDimensions';
 
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 
 import GroupChatInfo from '../common/GroupChatInfo';
 import PrivateChatInfo from '../common/PrivateChatInfo';
@@ -52,7 +52,7 @@ const StoryView = ({
     closeStoryViewModal,
   } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const handleClick = useLastCallback(() => {
     const { type } = storyView;
@@ -159,8 +159,7 @@ const StoryView = ({
         styles.opacityFadeIn,
         (storyView.isUserBlocked || storyView.areStoriesBlocked) && styles.blocked,
       )}
-      // eslint-disable-next-line react/jsx-no-bind
-      onClick={() => handleClick()}
+      onClick={handleClick}
       rightElement={storyView.type === 'user' && storyView.reaction ? (
         <ReactionStaticEmoji
           reaction={storyView.reaction}
@@ -202,6 +201,6 @@ export default memo(withGlobal<OwnProps>((global, { storyView }) => {
 
   return {
     peer,
-    availableReactions: global.availableReactions,
+    availableReactions: global.reactions.availableReactions,
   };
 })(StoryView));

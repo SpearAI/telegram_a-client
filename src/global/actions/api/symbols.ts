@@ -4,10 +4,11 @@ import type {
 import type { RequiredGlobalActions } from '../../index';
 import type { ActionReturnType, GlobalState, TabArgs } from '../../types';
 
+import { BIRTHDAY_NUMBERS_SET } from '../../../config';
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
 import { buildCollectionByKey } from '../../../util/iteratees';
-import { translate } from '../../../util/langProvider';
-import * as langProvider from '../../../util/langProvider';
+import { oldTranslate } from '../../../util/oldLangProvider';
+import * as langProvider from '../../../util/oldLangProvider';
 import { pause, throttle } from '../../../util/schedulers';
 import searchWords from '../../../util/searchWords';
 import { callApi } from '../../../api/gramjs';
@@ -149,29 +150,6 @@ addActionHandler('loadPremiumStickers', async (global): Promise<void> => {
   setGlobal(global);
 });
 
-addActionHandler('loadPremiumSetStickers', async (global): Promise<void> => {
-  const { hash } = global.stickers.premium || {};
-
-  const result = await callApi('fetchStickersForEmoji', { emoji: '📂⭐️', hash });
-  if (!result) {
-    return;
-  }
-
-  global = getGlobal();
-
-  global = {
-    ...global,
-    stickers: {
-      ...global.stickers,
-      premiumSet: {
-        hash: result.hash,
-        stickers: result.stickers,
-      },
-    },
-  };
-  setGlobal(global);
-});
-
 addActionHandler('loadGreetingStickers', async (global): Promise<void> => {
   const { hash } = global.stickers.greeting || {};
 
@@ -290,6 +268,26 @@ addActionHandler('loadAnimatedEmojis', async (global): Promise<void> => {
   setGlobal(global);
 });
 
+addActionHandler('loadBirthdayNumbersStickers', async (global): Promise<void> => {
+  const emojis = await callApi('fetchStickers', {
+    stickerSetInfo: {
+      shortName: BIRTHDAY_NUMBERS_SET,
+    },
+  });
+  if (!emojis) {
+    return;
+  }
+
+  global = getGlobal();
+
+  global = {
+    ...global,
+    birthdayNumbers: { ...emojis.set, stickers: emojis.stickers },
+  };
+
+  setGlobal(global);
+});
+
 addActionHandler('loadGenericEmojiEffects', async (global): Promise<void> => {
   const stickerSet = await callApi('fetchGenericEmojiEffects');
   if (!stickerSet) {
@@ -339,9 +337,9 @@ addActionHandler('saveGif', async (global, actions, payload): Promise<void> => {
 
   if (!shouldUnsave && length && length >= limit) {
     actions.showNotification({
-      title: langProvider.translate('LimitReachedFavoriteGifs', limit.toString()),
-      message: isPremium ? langProvider.translate('LimitReachedFavoriteGifsSubtitlePremium')
-        : langProvider.translate('LimitReachedFavoriteGifsSubtitle',
+      title: langProvider.oldTranslate('LimitReachedFavoriteGifs', limit.toString()),
+      message: isPremium ? langProvider.oldTranslate('LimitReachedFavoriteGifsSubtitlePremium')
+        : langProvider.oldTranslate('LimitReachedFavoriteGifsSubtitle',
           premiumLimit.toString()),
       ...(!isPremium && {
         action: {
@@ -385,9 +383,9 @@ addActionHandler('faveSticker', (global, actions, payload): ActionReturnType => 
 
   if (current >= limit) {
     actions.showNotification({
-      title: langProvider.translate('LimitReachedFavoriteStickers', limit.toString()),
-      message: isPremium ? langProvider.translate('LimitReachedFavoriteStickersSubtitlePremium')
-        : langProvider.translate('LimitReachedFavoriteStickersSubtitle',
+      title: langProvider.oldTranslate('LimitReachedFavoriteStickers', limit.toString()),
+      message: isPremium ? langProvider.oldTranslate('LimitReachedFavoriteStickersSubtitlePremium')
+        : langProvider.oldTranslate('LimitReachedFavoriteStickersSubtitle',
           premiumLimit.toString()),
       ...(!isPremium && {
         action: {
@@ -565,7 +563,7 @@ async function loadStickers<T extends GlobalState>(
   } catch (error) {
     if ((error as ApiError).message === 'STICKERSET_INVALID') {
       actions.showNotification({
-        message: translate('StickerPack.ErrorNotFound'),
+        message: oldTranslate('StickerPack.ErrorNotFound'),
         tabId,
       });
 

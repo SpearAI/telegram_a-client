@@ -19,11 +19,11 @@ import { fastRaf } from '../../../util/schedulers';
 import { IS_CANVAS_FILTER_SUPPORTED } from '../../../util/windowEnvironment';
 import formatGroupCallVolume from './helpers/formatGroupCallVolume';
 
+import useInterval from '../../../hooks/schedulers/useInterval';
 import useContextMenuHandlers from '../../../hooks/useContextMenuHandlers';
-import useInterval from '../../../hooks/useInterval';
-import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
 import useMenuPosition from '../../../hooks/useMenuPosition';
+import useOldLang from '../../../hooks/useOldLang';
 
 import FullNameTitle from '../../common/FullNameTitle';
 import Button from '../../ui/Button';
@@ -61,7 +61,7 @@ const GroupCallParticipantVideo: FC<OwnProps & StateProps> = ({
   user,
   chat,
 }) => {
-  const lang = useLang();
+  const lang = useOldLang();
 
   // eslint-disable-next-line no-null/no-null
   const thumbnailRef = useRef<HTMLCanvasElement>(null);

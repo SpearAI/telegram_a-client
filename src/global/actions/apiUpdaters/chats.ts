@@ -4,15 +4,18 @@ import { MAIN_THREAD_ID } from '../../../api/types';
 
 import { ARCHIVED_FOLDER_ID, MAX_ACTIVE_PINNED_CHATS } from '../../../config';
 import { buildCollectionByKey, omit } from '../../../util/iteratees';
+import { isLocalMessageId } from '../../../util/messageKey';
 import { closeMessageNotifications, notifyAboutMessage } from '../../../util/notifications';
 import { buildLocalMessage } from '../../../api/gramjs/apiBuilders/messages';
-import { isChatChannel, isLocalMessageId } from '../../helpers';
+import { checkIfHasUnreadReactions, isChatChannel } from '../../helpers';
 import {
   addActionHandler, getGlobal, setGlobal,
 } from '../../index';
 import {
+  addUnreadMentions,
   deleteChatMessages,
   leaveChat,
+  removeUnreadMentions,
   replaceThreadParam,
   updateChat,
   updateChatFullInfo,
@@ -94,10 +97,11 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       const listType = selectChatListType(global, update.id);
       const chat = selectChat(global, update.id);
       if (chat && isChatChannel(chat)) {
-        actions.fetchChannelRecommendations({ chatId: chat.id });
+        actions.loadChannelRecommendations({ chatId: chat.id });
         const lastMessageId = selectChatLastMessageId(global, chat.id);
         const localMessage = buildLocalMessage(chat, lastMessageId);
         localMessage.content.action = {
+          mediaType: 'action',
           text: 'you joined this channel',
           translationValues: ['ChannelJoined'],
           type: 'joinedChannel',
@@ -176,13 +180,10 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
 
       global = updateChat(global, update.chatId, {
         unreadCount: chat.unreadCount ? chat.unreadCount + 1 : 1,
-        ...(hasMention && { unreadMentionsCount: (chat.unreadMentionsCount || 0) + 1 }),
       });
 
       if (hasMention) {
-        global = updateChat(global, update.chatId, {
-          unreadMentions: [...(chat.unreadMentions || []), update.message.id!],
-        });
+        global = addUnreadMentions(global, update.chatId, chat, [update.message.id!], true);
       }
 
       const topic = chat.isForum ? selectTopicFromMessage(global, message as ApiMessage) : undefined;
@@ -205,26 +206,21 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
     case 'updateCommonBoxMessages':
     case 'updateChannelMessages': {
       const { ids, messageUpdate } = update;
-      if (messageUpdate.hasUnreadMention !== false) {
-        return undefined;
-      }
 
       ids.forEach((id) => {
         const chatId = ('channelId' in update ? update.channelId : selectCommonBoxChatId(global, id))!;
         const chat = selectChat(global, chatId);
 
-        if (chat?.unreadReactionsCount) {
+        if (messageUpdate.reactions && chat?.unreadReactionsCount
+            && !checkIfHasUnreadReactions(global, messageUpdate.reactions)) {
           global = updateUnreadReactions(global, chatId, {
-            unreadReactionsCount: (chat.unreadReactionsCount - 1) || undefined,
+            unreadReactionsCount: Math.max(chat.unreadReactionsCount - 1, 0) || undefined,
             unreadReactions: chat.unreadReactions?.filter((i) => i !== id),
           });
         }
 
-        if (chat?.unreadMentionsCount) {
-          global = updateChat(global, chatId, {
-            unreadMentionsCount: (chat.unreadMentionsCount - 1) || undefined,
-            unreadMentions: chat.unreadMentions?.filter((i) => i !== id),
-          });
+        if (!messageUpdate.hasUnreadMention && chat?.unreadMentionsCount) {
+          global = removeUnreadMentions(global, chatId, chat, [id], true);
         }
       });
 
@@ -430,19 +426,6 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
         });
 
         return global;
-      }
-
-      return undefined;
-    }
-
-    case 'deleteProfilePhotos': {
-      const { chatId, ids } = update;
-      const chat = global.chats.byId[chatId];
-
-      if (chat?.photos) {
-        return updateChat(global, chatId, {
-          photos: chat.photos.filter((photo) => !ids.includes(photo.id)),
-        });
       }
 
       return undefined;

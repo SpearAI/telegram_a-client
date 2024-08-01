@@ -9,7 +9,7 @@ import { getUserFullName, isChatChannel } from '../../../global/helpers';
 import { selectChat, selectChatFullInfo } from '../../../global/selectors';
 
 import useHistoryBack from '../../../hooks/useHistoryBack';
-import useLang from '../../../hooks/useLang';
+import useOldLang from '../../../hooks/useOldLang';
 
 import PrivateChatInfo from '../../common/PrivateChatInfo';
 import FloatingActionButton from '../../ui/FloatingActionButton';
@@ -24,9 +24,9 @@ type OwnProps = {
 };
 
 type StateProps = {
-  chat: ApiChat;
+  chat?: ApiChat;
   currentUserId?: string;
-  isChannel: boolean;
+  isChannel?: boolean;
   adminMembersById?: Record<string, ApiChatMember>;
 };
 
@@ -40,14 +40,14 @@ const ManageChatAdministrators: FC<OwnProps & StateProps> = ({
   onClose,
   isActive,
 }) => {
-  const lang = useLang();
+  const lang = useOldLang();
 
   useHistoryBack({
     isActive,
     onBack: onClose,
   });
 
-  const canAddNewAdmins = Boolean(chat.isCreator || chat.adminRights?.addAdmins);
+  const canAddNewAdmins = Boolean(chat?.isCreator || chat?.adminRights?.addAdmins);
 
   const adminMembers = useMemo(() => {
     if (!adminMembersById) {
@@ -141,12 +141,12 @@ const ManageChatAdministrators: FC<OwnProps & StateProps> = ({
 
 export default memo(withGlobal<OwnProps>(
   (global, { chatId }): StateProps => {
-    const chat = selectChat(global, chatId)!;
+    const chat = selectChat(global, chatId);
 
     return {
       chat,
       currentUserId: global.currentUserId,
-      isChannel: isChatChannel(chat),
+      isChannel: chat && isChatChannel(chat),
       adminMembersById: selectChatFullInfo(global, chatId)?.adminMembersById,
     };
   },

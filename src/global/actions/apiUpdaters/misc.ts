@@ -63,6 +63,10 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       actions.loadRecentEmojiStatuses();
       break;
 
+    case 'updateSavedReactionTags':
+      actions.loadSavedReactionTags();
+      break;
+
     case 'updateMoveStickerSetToTop': {
       const oldOrder = update.isCustomEmoji ? global.customEmojis.added.setIds : global.stickers.added.setIds;
       if (!oldOrder) return global;
@@ -149,8 +153,14 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       break;
 
     case 'updateAttachMenuBots':
-      actions.loadAttachBots({ hash: global.attachMenu.hash });
+      actions.loadAttachBots();
       break;
+
+    case 'updatePremiumFloodWait': {
+      actions.processPremiumFloodWait({
+        isUpload: update.isUpload,
+      });
+    }
   }
 
   return undefined;

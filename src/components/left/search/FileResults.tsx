@@ -9,16 +9,16 @@ import type { StateProps } from './helpers/createMapStateToProps';
 import { LoadMoreDirection } from '../../../types';
 
 import { SLIDE_TRANSITION_DURATION } from '../../../config';
-import { getMessageDocument } from '../../../global/helpers';
+import { getIsDownloading, getMessageDocument } from '../../../global/helpers';
 import buildClassName from '../../../util/buildClassName';
-import { formatMonthAndYear, toYearMonth } from '../../../util/dateFormat';
+import { formatMonthAndYear, toYearMonth } from '../../../util/dates/dateFormat';
 import { MEMO_EMPTY_ARRAY } from '../../../util/memo';
 import { throttle } from '../../../util/schedulers';
 import { createMapStateToProps } from './helpers/createMapStateToProps';
 import { getSenderName } from './helpers/getSenderName';
 
 import { useIntersectionObserver } from '../../../hooks/useIntersectionObserver';
-import useLang from '../../../hooks/useLang';
+import useOldLang from '../../../hooks/useOldLang';
 import useAsyncRendering from '../../right/hooks/useAsyncRendering';
 
 import Document from '../../common/Document';
@@ -53,7 +53,7 @@ const FileResults: FC<OwnProps & StateProps> = ({
   // eslint-disable-next-line no-null/no-null
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const { observe: observeIntersectionForMedia } = useIntersectionObserver({
     rootRef: containerRef,
@@ -84,8 +84,8 @@ const FileResults: FC<OwnProps & StateProps> = ({
     }).filter(Boolean) as ApiMessage[];
   }, [globalMessagesByChatId, foundIds]);
 
-  const handleMessageFocus = useCallback((messageId: number, chatId: string) => {
-    focusMessage({ chatId, messageId });
+  const handleMessageFocus = useCallback((message: ApiMessage) => {
+    focusMessage({ chatId: message.chatId, messageId: message.id });
   }, [focusMessage]);
 
   function renderList() {
@@ -111,13 +111,14 @@ const FileResults: FC<OwnProps & StateProps> = ({
             </p>
           )}
           <Document
+            document={getMessageDocument(message)!}
             message={message}
             withDate
             datetime={message.date}
             smaller
             sender={getSenderName(lang, message, chatsById, usersById)}
             className="scroll-item"
-            isDownloading={activeDownloads[message.chatId]?.ids?.includes(message.id)}
+            isDownloading={getIsDownloading(activeDownloads, message.content.document!)}
             shouldWarnAboutSvg={shouldWarnAboutSvg}
             observeIntersection={observeIntersectionForMedia}
             onDateClick={handleMessageFocus}

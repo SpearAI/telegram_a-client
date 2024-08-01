@@ -6,14 +6,15 @@ import { IS_MOCKED_CLIENT } from '../config';
 import { isCacheApiSupported } from '../util/cacheApi';
 import { getCurrentTabId, reestablishMasterToSelf } from '../util/establishMultitabRole';
 import { cloneDeep } from '../util/iteratees';
+import { isLocalMessageId } from '../util/messageKey';
 import { Bundles, loadBundle } from '../util/moduleLoader';
 import { parseLocationHash } from '../util/routing';
 import { clearStoredSession } from '../util/sessions';
 import { updatePeerColors } from '../util/theme';
 import { IS_MULTITAB_SUPPORTED } from '../util/windowEnvironment';
+import { initializeChatMediaSearchResults } from './reducers/localSearch';
 import { updateTabState } from './reducers/tabs';
 import { initCache, loadCache } from './cache';
-import { isLocalMessageId } from './helpers';
 import {
   addActionHandler, getGlobal, setGlobal,
 } from './index';
@@ -79,6 +80,7 @@ addActionHandler('init', (global, actions, payload): ActionReturnType => {
         global = replaceThreadParam(global, chatId, threadId, 'lastViewportIds', undefined);
         return;
       }
+      global = initializeChatMediaSearchResults(global, chatId, threadId, tabId);
       global = replaceTabThreadParam(
         global,
         chatId,

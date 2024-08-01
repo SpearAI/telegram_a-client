@@ -1,5 +1,6 @@
 import type {
-  ApiChat, ApiMessage, ApiPollResult, ApiReactions,
+  ApiChat, ApiMediaExtendedPreview, ApiMessage, ApiPollResult, ApiReactions,
+  MediaContent,
 } from '../../../api/types';
 import type { ThreadId } from '../../../types';
 import type { RequiredGlobalActions } from '../../index';
@@ -11,10 +12,12 @@ import { MAIN_THREAD_ID } from '../../../api/types';
 import { SERVICE_NOTIFICATIONS_USER_ID } from '../../../config';
 import { areDeepEqual } from '../../../util/areDeepEqual';
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
-import { omit, pickTruthy, unique } from '../../../util/iteratees';
+import {
+  buildCollectionByKey, omit, pickTruthy, unique,
+} from '../../../util/iteratees';
+import { getMessageKey, isLocalMessageId } from '../../../util/messageKey';
 import { notifyAboutMessage } from '../../../util/notifications';
 import { onTickEnd } from '../../../util/schedulers';
-import { newMessageUpdateCrm } from '../../../nreach/helpers';
 import {
   checkIfHasUnreadReactions, getIsSavedDialog, getMessageContent, getMessageText, isActionMessage,
   isMessageLocal, isUserId,
@@ -27,14 +30,19 @@ import {
   clearMessageTranslation,
   deleteChatMessages,
   deleteChatScheduledMessages,
+  deleteQuickReply,
+  deleteQuickReplyMessages,
   deleteTopic,
   removeChatFromChatLists,
   replaceThreadParam,
   updateChat,
   updateChatLastMessageId,
+  updateChatMediaLoadingState,
   updateChatMessage,
   updateListedIds,
   updateMessageTranslations,
+  updateQuickReplies,
+  updateQuickReplyMessage,
   updateScheduledMessage,
   updateThreadInfo,
   updateThreadInfos,
@@ -59,6 +67,7 @@ import {
   selectIsServiceChatReady,
   selectIsViewportNewest,
   selectListedIds,
+  selectPerformanceSettingsValue,
   selectPinnedIds,
   selectSavedDialogIdFromMessage,
   selectScheduledIds,
@@ -101,6 +110,9 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
         if (isLocal && wasDrafted) {
           global = updateChatLastMessage(global, chatId, newMessage);
         }
+
+        const threadId = selectThreadIdFromMessage(global, newMessage);
+        global = updateChatMediaLoadingState(global, newMessage, chatId, threadId, tabId);
 
         if (selectIsMessageInCurrentMessageList(global, chatId, message as ApiMessage, tabId)) {
           if (isLocal && message.isOutgoing && !(message.content?.action) && !storyReplyInfo?.storyId
@@ -146,9 +158,6 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
         actions.loadTopChats();
       }
 
-      // eslint-disable-next-line no-console
-      newMessageUpdateCrm(global, chatId).then(() => console.log('update new message succesfully'));
-
       if (selectIsChatWithSelf(global, chatId) && !isLocal) {
         const savedDialogId = selectSavedDialogIdFromMessage(global, newMessage);
         if (savedDialogId && !selectIsChatListed(global, savedDialogId, 'saved')) {
@@ -162,7 +171,7 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
     case 'updateChatLastMessage': {
       const { id, lastMessage } = update;
 
-      global = updateChatLastMessage(global, id, lastMessage);
+      global = updateChatLastMessage(global, id, lastMessage, true);
       global = addMessages(global, [lastMessage]);
       setGlobal(global);
       break;
@@ -225,7 +234,9 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       const newMessage = selectChatMessage(global, chatId, id)!;
 
       if (message.reactions && chat) {
-        global = updateReactions(global, chatId, id, message.reactions, chat, newMessage.isOutgoing, currentMessage);
+        global = updateReactions(
+          global, actions, chatId, id, message.reactions, chat, newMessage.isOutgoing, currentMessage,
+        );
       }
 
       if (message.content?.text?.text !== currentMessage?.content?.text?.text) {
@@ -259,6 +270,39 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       break;
     }
 
+    case 'updateQuickReplyMessage': {
+      const { id, message } = update;
+
+      global = updateQuickReplyMessage(global, id, message);
+      setGlobal(global);
+
+      break;
+    }
+
+    case 'deleteQuickReplyMessages': {
+      const { messageIds } = update;
+
+      global = deleteQuickReplyMessages(global, messageIds);
+      setGlobal(global);
+
+      break;
+    }
+
+    case 'updateQuickReplies': {
+      const { quickReplies } = update;
+      const byId = buildCollectionByKey(quickReplies, 'id');
+
+      global = updateQuickReplies(global, byId);
+      setGlobal(global);
+      break;
+    }
+
+    case 'deleteQuickReply': {
+      global = deleteQuickReply(global, update.quickReplyId);
+      setGlobal(global);
+      break;
+    }
+
     case 'updateMessageSendSucceeded': {
       const { chatId, localId, message } = update;
 
@@ -282,7 +326,7 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       global = {
         ...global,
         fileUploads: {
-          byMessageLocalId: omit(global.fileUploads.byMessageLocalId, [localId.toString()]),
+          byMessageKey: omit(global.fileUploads.byMessageKey, [getMessageKey(message)]),
         },
       };
 
@@ -623,36 +667,54 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
 
       if (!chat || !message) return;
 
-      global = updateReactions(global, chatId, id, reactions, chat, message.isOutgoing, message);
+      global = updateReactions(global, actions, chatId, id, reactions, chat, message.isOutgoing, message);
       setGlobal(global);
       break;
     }
 
     case 'updateMessageExtendedMedia': {
       const {
-        chatId, id, media, preview,
+        chatId, id, extendedMedia, isBought,
       } = update;
       const message = selectChatMessage(global, chatId, id);
       const chat = selectChat(global, update.chatId);
 
       if (!chat || !message) return;
 
-      if (preview) {
-        if (!message.content.invoice) return;
+      if (message.content.invoice) {
+        const media = extendedMedia[0];
+        if ('mediaType' in media && media.mediaType === 'extendedMediaPreview') {
+          if (!message.content.invoice) return;
+          global = updateChatMessage(global, chatId, id, {
+            content: {
+              ...message.content,
+              invoice: {
+                ...message.content.invoice,
+                extendedMedia: media,
+              },
+            },
+          });
+          setGlobal(global);
+        } else {
+          const content = media as MediaContent;
+          global = updateChatMessage(global, chatId, id, {
+            content,
+          });
+          setGlobal(global);
+        }
+      }
+
+      if (message.content.paidMedia) {
+        const paidMediaUpdate = isBought ? { isBought, extendedMedia }
+          : { extendedMedia: extendedMedia as ApiMediaExtendedPreview[], isBought: undefined };
+
         global = updateChatMessage(global, chatId, id, {
           content: {
             ...message.content,
-            invoice: {
-              ...message.content.invoice,
-              extendedMedia: preview,
+            paidMedia: {
+              ...message.content.paidMedia,
+              ...paidMediaUpdate,
             },
-          },
-        });
-        setGlobal(global);
-      } else if (media) {
-        global = updateChatMessage(global, chatId, id, {
-          content: {
-            ...media,
           },
         });
         setGlobal(global);
@@ -709,6 +771,7 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
 
 function updateReactions<T extends GlobalState>(
   global: T,
+  actions: RequiredGlobalActions,
   chatId: string,
   id: number,
   reactions: ApiReactions,
@@ -729,13 +792,22 @@ function updateReactions<T extends GlobalState>(
     return global;
   }
 
-  const alreadyHasUnreadReaction = chat.unreadReactions?.includes(id);
+  const { reaction, isOwn, isUnread } = reactions.recentReactions?.[0] ?? {};
+  const reactionEffectsEnabled = selectPerformanceSettingsValue(global, 'reactionEffects');
+  if (reactionEffectsEnabled && message && reaction && isUnread && !isOwn) {
+    const messageKey = getMessageKey(message);
+    // Start reaction only in master tab
+    actions.startActiveReaction({ containerId: messageKey, reaction, tabId: getCurrentTabId() });
+  }
+
+  const hasUnreadReactionsForMessageInChat = chat.unreadReactions?.includes(id);
+  const hasUnreadReactionsInNewReactions = checkIfHasUnreadReactions(global, reactions);
 
   // Only notify about added reactions, not removed ones
-  if (checkIfHasUnreadReactions(global, reactions) && !alreadyHasUnreadReaction) {
+  if (hasUnreadReactionsInNewReactions && !hasUnreadReactionsForMessageInChat) {
     global = updateUnreadReactions(global, chatId, {
       unreadReactionsCount: (chat?.unreadReactionsCount || 0) + 1,
-      unreadReactions: [...(chat?.unreadReactions || []), id],
+      unreadReactions: [...(chat?.unreadReactions || []), id].sort((a, b) => b - a),
     });
 
     const newMessage = selectChatMessage(global, chatId, id);
@@ -749,7 +821,9 @@ function updateReactions<T extends GlobalState>(
         isReaction: true,
       });
     });
-  } else if (alreadyHasUnreadReaction) {
+  }
+
+  if (!hasUnreadReactionsInNewReactions && hasUnreadReactionsForMessageInChat) {
     global = updateUnreadReactions(global, chatId, {
       unreadReactionsCount: (chat?.unreadReactionsCount || 1) - 1,
       unreadReactions: chat?.unreadReactions?.filter((i) => i !== id),
@@ -760,26 +834,31 @@ function updateReactions<T extends GlobalState>(
 }
 
 function updateWithLocalMedia(
-  global: RequiredGlobalState, chatId: string, id: number, messageUpdate: Partial<ApiMessage>, isScheduled = false,
+  global: RequiredGlobalState,
+  chatId: string,
+  id: number,
+  messageUpdate: Partial<ApiMessage>,
+  isScheduled = false,
 ) {
   const currentMessage = isScheduled
     ? selectScheduledMessage(global, chatId, id)
     : selectChatMessage(global, chatId, id);
 
   // Preserve locally uploaded media.
-  if (currentMessage && messageUpdate.content) {
+  if (currentMessage && messageUpdate.content && !isLocalMessageId(id)) {
     const {
       photo, video, sticker, document,
     } = getMessageContent(currentMessage);
+
     if (photo && messageUpdate.content.photo) {
-      messageUpdate.content.photo.blobUrl = photo.blobUrl;
-      messageUpdate.content.photo.thumbnail = photo.thumbnail;
+      messageUpdate.content.photo.blobUrl ??= photo.blobUrl;
+      messageUpdate.content.photo.thumbnail ??= photo.thumbnail;
     } else if (video && messageUpdate.content.video) {
-      messageUpdate.content.video.blobUrl = video.blobUrl;
+      messageUpdate.content.video.blobUrl ??= video.blobUrl;
     } else if (sticker && messageUpdate.content.sticker) {
-      messageUpdate.content.sticker.isPreloadedGlobally = sticker.isPreloadedGlobally;
+      messageUpdate.content.sticker.isPreloadedGlobally ??= sticker.isPreloadedGlobally;
     } else if (document && messageUpdate.content.document) {
-      messageUpdate.content.document.previewBlobUrl = document.previewBlobUrl;
+      messageUpdate.content.document.previewBlobUrl ??= document.previewBlobUrl;
     }
   }
 

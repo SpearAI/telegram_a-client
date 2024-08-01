@@ -7,11 +7,11 @@ import { HEART_REACTION } from '../../config';
 import { getStoryKey, isUserId } from '../../global/helpers';
 import buildClassName from '../../util/buildClassName';
 
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 
 import AvatarList from '../common/AvatarList';
-import Icon from '../common/Icon';
+import Icon from '../common/icons/Icon';
 import ReactionAnimatedEmoji from '../common/reactions/ReactionAnimatedEmoji';
 import Button from '../ui/Button';
 
@@ -19,17 +19,15 @@ import styles from './StoryFooter.module.scss';
 
 type OwnProps = {
   story: ApiStory;
-  areViewsExpired?: boolean;
   className?: string;
 };
 
 const StoryFooter = ({
   story,
-  areViewsExpired,
   className,
 }: OwnProps) => {
   const { openStoryViewModal, openForwardMenu, sendStoryReaction } = getActions();
-  const lang = useLang();
+  const lang = useOldLang();
 
   const {
     views, isOut, peerId, id: storyId, sentReaction,
@@ -94,7 +92,7 @@ const StoryFooter = ({
         className={buildClassName(styles.viewInfo, !isChannel && styles.interactive)}
         onClick={!isChannel ? handleOpenStoryViewModal : undefined}
       >
-        {!areViewsExpired && Boolean(recentViewers?.length) && (
+        {Boolean(recentViewers?.length) && (
           <AvatarList
             size="small"
             peers={recentViewers}

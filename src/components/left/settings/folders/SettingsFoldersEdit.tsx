@@ -24,15 +24,15 @@ import {
   selectChatFilters,
 } from '../../../../hooks/reducers/useFoldersReducer';
 import useHistoryBack from '../../../../hooks/useHistoryBack';
-import useLang from '../../../../hooks/useLang';
+import useOldLang from '../../../../hooks/useOldLang';
 
 import AnimatedIcon from '../../../common/AnimatedIcon';
 import GroupChatInfo from '../../../common/GroupChatInfo';
+import Icon from '../../../common/icons/Icon';
 import PrivateChatInfo from '../../../common/PrivateChatInfo';
 import FloatingActionButton from '../../../ui/FloatingActionButton';
 import InputText from '../../../ui/InputText';
 import ListItem from '../../../ui/ListItem';
-import ShowMoreButton from '../../../ui/ShowMoreButton';
 import Spinner from '../../../ui/Spinner';
 
 type OwnProps = {
@@ -147,7 +147,7 @@ const SettingsFoldersEdit: FC<OwnProps & StateProps> = ({
     loadedActiveChatIds, loadedArchivedChatIds,
   ]);
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   useHistoryBack({
     isActive,
@@ -265,12 +265,14 @@ const SettingsFoldersEdit: FC<OwnProps & StateProps> = ({
           </ListItem>
         ))}
         {(!isExpanded && leftChatsCount > 0) && (
-          <ShowMoreButton
-            count={leftChatsCount}
-            itemName="chat"
+          <ListItem
+            key="load-more"
             // eslint-disable-next-line react/jsx-no-bind
             onClick={clickHandler}
-          />
+          >
+            <Icon name="down" className="down" />
+            {lang('FilterShowMoreChats', leftChatsCount, 'i')}
+          </ListItem>
         )}
       </>
     );
@@ -358,7 +360,6 @@ const SettingsFoldersEdit: FC<OwnProps & StateProps> = ({
               className="settings-folders-list-item mb-0"
               icon="link"
               multiline
-              // eslint-disable-next-line react/jsx-no-bind
               onClick={handleEditInviteClick}
               clickArg={invite.url}
             >

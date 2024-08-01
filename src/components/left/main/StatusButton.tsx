@@ -8,13 +8,13 @@ import { EMOJI_STATUS_LOOP_LIMIT } from '../../../config';
 import { selectUser } from '../../../global/selectors';
 import { getServerTimeOffset } from '../../../util/serverTime';
 
+import useTimeout from '../../../hooks/schedulers/useTimeout';
 import useAppLayout from '../../../hooks/useAppLayout';
 import useEffectWithPrevDeps from '../../../hooks/useEffectWithPrevDeps';
 import useFlag from '../../../hooks/useFlag';
-import useTimeout from '../../../hooks/useTimeout';
 
 import CustomEmoji from '../../common/CustomEmoji';
-import PremiumIcon from '../../common/PremiumIcon';
+import StarIcon from '../../common/icons/StarIcon';
 import CustomEmojiEffect from '../../common/reactions/CustomEmojiEffect';
 import Button from '../../ui/Button';
 import StatusPickerMenu from './StatusPickerMenu.async';
@@ -82,7 +82,7 @@ const StatusButton: FC<StateProps> = ({ emojiStatus }) => {
             size={EMOJI_STATUS_SIZE}
             loopLimit={EMOJI_STATUS_LOOP_LIMIT}
           />
-        ) : <PremiumIcon />}
+        ) : <StarIcon />}
       </Button>
       <StatusPickerMenu
         statusButtonRef={buttonRef}

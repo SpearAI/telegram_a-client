@@ -5,15 +5,19 @@ import { getActions, withGlobal } from '../../../global';
 import { SettingsScreens } from '../../../types';
 
 import { FAQ_URL, PRIVACY_URL } from '../../../config';
-import { selectIsPremiumPurchaseBlocked } from '../../../global/selectors';
+import {
+  selectIsGiveawayGiftsPurchaseAvailable,
+  selectIsPremiumPurchaseBlocked,
+} from '../../../global/selectors';
+import { formatInteger } from '../../../util/textFormat';
 
 import useFlag from '../../../hooks/useFlag';
 import useHistoryBack from '../../../hooks/useHistoryBack';
-import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
+import useOldLang from '../../../hooks/useOldLang';
 
-import ChatExtra from '../../common/ChatExtra';
-import PremiumIcon from '../../common/PremiumIcon';
+import StarIcon from '../../common/icons/StarIcon';
+import ChatExtra from '../../common/profile/ChatExtra';
 import ProfileInfo from '../../common/ProfileInfo';
 import ConfirmDialog from '../../ui/ConfirmDialog';
 import ListItem from '../../ui/ListItem';
@@ -28,26 +32,34 @@ type StateProps = {
   sessionCount: number;
   currentUserId?: string;
   canBuyPremium?: boolean;
+  isGiveawayAvailable?: boolean;
+  starsBalance?: number;
+  shouldDisplayStars?: boolean;
 };
 
 const SettingsMain: FC<OwnProps & StateProps> = ({
   isActive,
-  onScreenSelect,
-  onReset,
   currentUserId,
   sessionCount,
   canBuyPremium,
+  isGiveawayAvailable,
+  starsBalance,
+  shouldDisplayStars,
+  onScreenSelect,
+  onReset,
 }) => {
   const {
     loadProfilePhotos,
     openPremiumModal,
     openSupportChat,
     openUrl,
+    openPremiumGiftingModal,
+    openStarsBalanceModal,
   } = getActions();
 
   const [isSupportDialogOpen, openSupportDialog, closeSupportDialog] = useFlag(false);
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   useEffect(() => {
     if (currentUserId) {
@@ -78,7 +90,7 @@ const SettingsMain: FC<OwnProps & StateProps> = ({
         {currentUserId && (
           <ChatExtra
             chatOrUserId={currentUserId}
-            forceShowSelf
+            isInSettings
           />
         )}
         <ListItem
@@ -150,12 +162,35 @@ const SettingsMain: FC<OwnProps & StateProps> = ({
       <div className="settings-main-menu">
         {canBuyPremium && (
           <ListItem
-            leftElement={<PremiumIcon className="icon" withGradient big />}
-            className="settings-main-menu-premium"
+            leftElement={<StarIcon className="icon" type="premium" size="big" />}
+            className="settings-main-menu-star"
             // eslint-disable-next-line react/jsx-no-bind
             onClick={() => openPremiumModal()}
           >
             {lang('TelegramPremium')}
+          </ListItem>
+        )}
+        {shouldDisplayStars && (
+          <ListItem
+            leftElement={<StarIcon className="icon" type="gold" size="big" />}
+            className="settings-main-menu-star"
+            // eslint-disable-next-line react/jsx-no-bind
+            onClick={() => openStarsBalanceModal({})}
+          >
+            {lang('MenuTelegramStars')}
+            {Boolean(starsBalance) && (
+              <span className="settings-item__current-value">{formatInteger(starsBalance)}</span>
+            )}
+          </ListItem>
+        )}
+        {isGiveawayAvailable && (
+          <ListItem
+            icon="gift"
+            className="settings-main-menu-star"
+            // eslint-disable-next-line react/jsx-no-bind
+            onClick={() => openPremiumGiftingModal()}
+          >
+            {lang('GiftPremiumGifting')}
           </ListItem>
         )}
       </div>
@@ -196,11 +231,17 @@ const SettingsMain: FC<OwnProps & StateProps> = ({
 export default memo(withGlobal<OwnProps>(
   (global): StateProps => {
     const { currentUserId } = global;
+    const isGiveawayAvailable = selectIsGiveawayGiftsPurchaseAvailable(global);
+    const starsBalance = global.stars?.balance;
+    const shouldDisplayStars = Boolean(global.stars?.history?.all?.transactions.length);
 
     return {
       sessionCount: global.activeSessions.orderedHashes.length,
       currentUserId,
       canBuyPremium: !selectIsPremiumPurchaseBlocked(global),
+      isGiveawayAvailable,
+      starsBalance,
+      shouldDisplayStars,
     };
   },
 )(SettingsMain));

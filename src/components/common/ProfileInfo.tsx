@@ -27,8 +27,8 @@ import { MEMO_EMPTY_ARRAY } from '../../util/memo';
 import { IS_TOUCH_ENV } from '../../util/windowEnvironment';
 import renderText from './helpers/renderText';
 
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 import usePrevious from '../../hooks/usePrevious';
 import { useStateRef } from '../../hooks/useStateRef';
 import usePhotosPreload from './hooks/usePhotosPreload';
@@ -53,7 +53,7 @@ type StateProps =
     user?: ApiUser;
     userStatus?: ApiUserStatus;
     chat?: ApiChat;
-    mediaId?: number;
+    mediaIndex?: number;
     avatarOwnerId?: string;
     topic?: ApiTopic;
     messagesCount?: number;
@@ -63,7 +63,7 @@ type StateProps =
     chatProfilePhoto?: ApiPhoto;
     emojiStatusSticker?: ApiSticker;
   }
-  & Pick<GlobalState, 'connectionState'>;
+  & Pick<GlobalState, 'isSynced'>;
 
 const EMOJI_STATUS_SIZE = 24;
 const EMOJI_TOPIC_SIZE = 120;
@@ -74,8 +74,8 @@ const ProfileInfo: FC<OwnProps & StateProps> = ({
   user,
   userStatus,
   chat,
-  connectionState,
-  mediaId,
+  isSynced,
+  mediaIndex,
   avatarOwnerId,
   topic,
   messagesCount,
@@ -90,16 +90,17 @@ const ProfileInfo: FC<OwnProps & StateProps> = ({
     openMediaViewer,
     openPremiumModal,
     openStickerSet,
+    openPrivacySettingsNoticeModal,
   } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const { id: userId } = user || {};
   const { id: chatId } = chat || {};
   const photos = user?.photos || chat?.photos || MEMO_EMPTY_ARRAY;
-  const prevMediaId = usePrevious(mediaId);
+  const prevMediaIndex = usePrevious(mediaIndex);
   const prevAvatarOwnerId = usePrevious(avatarOwnerId);
-  const mediaIdRef = useStateRef(mediaId);
+  const mediaIndexRef = useStateRef(mediaIndex);
   const [hasSlideAnimation, setHasSlideAnimation] = useState(true);
   // slideOptimized doesn't work well when animation is dynamically disabled
   const slideAnimation = hasSlideAnimation ? (lang.isRtl ? 'slideRtl' : 'slide') : 'none';
@@ -110,17 +111,17 @@ const ProfileInfo: FC<OwnProps & StateProps> = ({
 
   // Set the current avatar photo to the last selected photo in Media Viewer after it is closed
   useEffect(() => {
-    if (prevAvatarOwnerId && prevMediaId !== undefined && mediaId === undefined) {
+    if (prevAvatarOwnerId && prevMediaIndex !== undefined && mediaIndex === undefined) {
       setHasSlideAnimation(false);
-      setCurrentPhotoIndex(prevMediaId);
+      setCurrentPhotoIndex(prevMediaIndex);
     }
-  }, [mediaId, prevMediaId, prevAvatarOwnerId]);
+  }, [mediaIndex, prevMediaIndex, prevAvatarOwnerId]);
 
   // Reset the current avatar photo to the one selected in Media Viewer if photos have changed
   useEffect(() => {
     setHasSlideAnimation(false);
-    setCurrentPhotoIndex(mediaIdRef.current || 0);
-  }, [mediaIdRef, photos]);
+    setCurrentPhotoIndex(mediaIndexRef.current || 0);
+  }, [mediaIndexRef, photos]);
 
   // Deleting the last profile photo may result in an error
   useEffect(() => {
@@ -131,17 +132,18 @@ const ProfileInfo: FC<OwnProps & StateProps> = ({
   }, [currentPhotoIndex, photos.length]);
 
   useEffect(() => {
-    if (connectionState === 'connectionStateReady' && userId && !forceShowSelf) {
+    if (isSynced && userId && !forceShowSelf) {
       loadFullUser({ userId });
     }
-  }, [userId, loadFullUser, connectionState, forceShowSelf]);
+  }, [userId, loadFullUser, isSynced, forceShowSelf]);
 
   usePhotosPreload(photos, currentPhotoIndex);
 
   const handleProfilePhotoClick = useLastCallback(() => {
     openMediaViewer({
-      avatarOwnerId: userId || chatId,
-      mediaId: currentPhotoIndex,
+      isAvatarView: true,
+      chatId: userId || chatId,
+      mediaIndex: currentPhotoIndex,
       origin: forceShowSelf ? MediaViewerOrigin.SettingsAvatar : MediaViewerOrigin.ProfileAvatar,
     });
   });
@@ -171,6 +173,10 @@ const ProfileInfo: FC<OwnProps & StateProps> = ({
     }
     setHasSlideAnimation(true);
     setCurrentPhotoIndex(currentPhotoIndex + 1);
+  });
+
+  const handleOpenGetReadDateModal = useLastCallback(() => {
+    openPrivacySettingsNoticeModal({ chatId: chat!.id, isReadDate: false });
   });
 
   function handleSelectFallbackPhoto() {
@@ -264,8 +270,21 @@ const ProfileInfo: FC<OwnProps & StateProps> = ({
 
     if (user) {
       return (
-        <div className={buildClassName(styles.status, 'status', isUserOnline(user, userStatus) && 'online')}>
-          <span className="user-status" dir="auto">{getUserStatus(lang, user, userStatus)}</span>
+        <div
+          className={buildClassName(
+            styles.status,
+            'status',
+            isUserOnline(user, userStatus) && 'online',
+          )}
+        >
+          <span className={styles.userStatus} dir="auto">
+            {getUserStatus(lang, user, userStatus)}
+          </span>
+          {userStatus?.isReadDateRestrictedByMe && (
+            <span className={styles.getStatus} onClick={handleOpenGetReadDateModal}>
+              <span>{lang('StatusHiddenShow')}</span>
+            </span>
+          )}
         </div>
       );
     }
@@ -363,12 +382,12 @@ const ProfileInfo: FC<OwnProps & StateProps> = ({
 
 export default memo(withGlobal<OwnProps>(
   (global, { userId }): StateProps => {
-    const { connectionState } = global;
+    const { isSynced } = global;
     const user = selectUser(global, userId);
     const isPrivate = isUserId(userId);
     const userStatus = selectUserStatus(global, userId);
     const chat = selectChat(global, userId);
-    const { mediaId, avatarOwnerId } = selectTabState(global).mediaViewer;
+    const { mediaIndex, chatId: avatarOwnerId } = selectTabState(global).mediaViewer;
     const isForum = chat?.isForum;
     const { threadId: currentTopicId } = selectCurrentMessageList(global) || {};
     const topic = isForum && currentTopicId ? chat?.topics?.[currentTopicId] : undefined;
@@ -379,7 +398,7 @@ export default memo(withGlobal<OwnProps>(
     const emojiStatusSticker = emojiStatus ? global.customEmojis.byId[emojiStatus.documentId] : undefined;
 
     return {
-      connectionState,
+      isSynced,
       user,
       userStatus,
       chat,
@@ -387,7 +406,7 @@ export default memo(withGlobal<OwnProps>(
       userProfilePhoto: userFullInfo?.profilePhoto,
       userFallbackPhoto: userFullInfo?.fallbackPhoto,
       chatProfilePhoto: chatFullInfo?.profilePhoto,
-      mediaId,
+      mediaIndex,
       avatarOwnerId,
       emojiStatusSticker,
       ...(topic && {

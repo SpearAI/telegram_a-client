@@ -1,43 +1,29 @@
 import type {
-  ApiChat, ApiMessage, ApiMessageEntityTextUrl, ApiPeer, ApiStory, ApiUser,
+  ApiAttachment, ApiChat, ApiMessage, ApiMessageEntityTextUrl, ApiPeer, ApiStory, ApiUser,
 } from '../../api/types';
-import type { LangFn } from '../../hooks/useLang';
-import { ApiMessageEntityTypes } from '../../api/types';
+import type { MediaContent } from '../../api/types/messages';
+import type { LangFn } from '../../hooks/useOldLang';
+import type { ThreadId } from '../../types';
+import { ApiMessageEntityTypes, MAIN_THREAD_ID } from '../../api/types';
 
 import {
-  CONTENT_NOT_SUPPORTED,
+  CONTENT_NOT_SUPPORTED, LOTTIE_STICKER_MIME_TYPE,
   RE_LINK_TEMPLATE,
-  SERVICE_NOTIFICATIONS_USER_ID,
+  SERVICE_NOTIFICATIONS_USER_ID, SUPPORTED_AUDIO_CONTENT_TYPES,
+  SUPPORTED_IMAGE_CONTENT_TYPES, SUPPORTED_VIDEO_CONTENT_TYPES, TME_LINK_PREFIX, VIDEO_STICKER_MIME_TYPE,
 } from '../../config';
 import { areSortedArraysIntersecting, unique } from '../../util/iteratees';
+import { isLocalMessageId } from '../../util/messageKey';
 import { getServerTime } from '../../util/serverTime';
-import { IS_OPUS_SUPPORTED } from '../../util/windowEnvironment';
 import { getGlobal } from '../index';
-import { getChatTitle, isUserId } from './chats';
-import { getUserFullName } from './users';
+import { getChatTitle, getCleanPeerId, isUserId } from './chats';
+import { getMainUsername, getUserFullName } from './users';
 
 const RE_LINK = new RegExp(RE_LINK_TEMPLATE, 'i');
 
-export type MessageKey = `msg${string}-${number}`;
-
-export function getMessageHtmlId(messageId: number) {
-  return `message${messageId.toString().replace('.', '-')}`;
-}
-
-export function getMessageKey(message: ApiMessage): MessageKey {
-  const { chatId, id, previousLocalId } = message;
-
-  return buildMessageKey(chatId, isServiceNotificationMessage(message) ? previousLocalId || id : id);
-}
-
-export function buildMessageKey(chatId: string, msgId: number): MessageKey {
-  return `msg${chatId}-${msgId}`;
-}
-
-export function parseMessageKey(key: MessageKey) {
-  const match = key.match(/^msg(-?\d+)-(\d+)/)!;
-
-  return { chatId: match[1], messageId: Number(match[2]) };
+export function getMessageHtmlId(messageId: number, index?: number) {
+  const parts = ['message', messageId.toString().replace('.', '-'), index].filter(Boolean);
+  return parts.join('-');
 }
 
 export function getMessageOriginalId(message: ApiMessage) {
@@ -55,12 +41,12 @@ export function getMessageTranscription(message: ApiMessage) {
 export function hasMessageText(message: ApiMessage | ApiStory) {
   const {
     text, sticker, photo, video, audio, voice, document, poll, webPage, contact, invoice, location,
-    game, action, storyData, giveaway, giveawayResults, isExpiredVoice,
+    game, action, storyData, giveaway, giveawayResults, isExpiredVoice, paidMedia,
   } = message.content;
 
   return Boolean(text) || !(
     sticker || photo || video || audio || voice || document || contact || poll || webPage || invoice || location
-    || game || action?.phoneCall || storyData || giveaway || giveawayResults || isExpiredVoice
+    || game || action?.phoneCall || storyData || giveaway || giveawayResults || isExpiredVoice || paidMedia
   );
 }
 
@@ -204,53 +190,13 @@ export function isMessageFailed(message: ApiMessage) {
   return message.sendingState === 'messageSendingStateFailed';
 }
 
-export function isLocalMessageId(id: number) {
-  return !Number.isInteger(id);
-}
-
 export function isHistoryClearMessage(message: ApiMessage) {
   return message.content.action && message.content.action.type === 'historyClear';
 }
 
-export function getMessageContentFilename(message: ApiMessage) {
-  const { content } = message;
-
-  const video = content.webPage ? content.webPage.video : content.video;
-  const photo = content.webPage ? content.webPage.photo : content.photo;
-  const document = content.webPage ? content.webPage.document : content.document;
-  if (document) {
-    return document.fileName;
-  }
-
-  if (video) {
-    return video.fileName;
-  }
-
-  if (content.sticker) {
-    const extension = content.sticker.isLottie ? 'tgs' : content.sticker.isVideo ? 'webm' : 'webp';
-    return `${content.sticker.id}.${extension}`;
-  }
-
-  if (content.audio) {
-    return content.audio.fileName;
-  }
-
-  const baseFilename = `${getMessageKey(message)}${message.isScheduled ? '_scheduled' : ''}`;
-
-  if (photo) {
-    return `${baseFilename}.jpg`;
-  }
-
-  if (content.voice) {
-    return IS_OPUS_SUPPORTED ? `${baseFilename}.ogg` : `${baseFilename}.wav`;
-  }
-
-  return baseFilename;
-}
-
 export function isGeoLiveExpired(message: ApiMessage) {
   const { location } = message.content;
-  if (location?.type !== 'geoLive') return false;
+  if (location?.mediaType !== 'geoLive') return false;
   return getServerTime() - (message.date || 0) >= location.period;
 }
 
@@ -340,15 +286,25 @@ export function extractMessageText(message: ApiMessage | ApiStory, inChatList = 
 }
 
 export function getExpiredMessageDescription(langFn: LangFn, message: ApiMessage): string | undefined {
-  const { isExpiredVoice } = message.content;
+  return getExpiredMessageContentDescription(langFn, message.content);
+}
+export function getExpiredMessageContentDescription(langFn: LangFn, mediaContent: MediaContent): string | undefined {
+  const { isExpiredVoice, isExpiredRoundVideo } = mediaContent;
   if (isExpiredVoice) {
     return langFn('Message.VoiceMessageExpired');
+  } else if (isExpiredRoundVideo) {
+    return langFn('Message.VideoMessageExpired');
   }
   return undefined;
 }
 
 export function isExpiredMessage(message: ApiMessage) {
-  return Boolean(message.content?.isExpiredVoice);
+  return isExpiredMessageContent(message.content);
+}
+
+export function isExpiredMessageContent(content: MediaContent) {
+  const { isExpiredVoice, isExpiredRoundVideo } = content ?? {};
+  return Boolean(isExpiredVoice || isExpiredRoundVideo);
 }
 
 export function hasMessageTtl(message: ApiMessage) {
@@ -357,4 +313,38 @@ export function hasMessageTtl(message: ApiMessage) {
 
 export function isJoinedChannelMessage(message: ApiMessage) {
   return message.content.action && message.content.action.type === 'joinedChannel';
+}
+
+export function getAttachmentType(attachment: ApiAttachment) {
+  if (attachment.shouldSendAsFile) return 'file';
+
+  if (SUPPORTED_IMAGE_CONTENT_TYPES.has(attachment.mimeType)) {
+    return 'image';
+  }
+
+  if (SUPPORTED_VIDEO_CONTENT_TYPES.has(attachment.mimeType)) {
+    return 'video';
+  }
+
+  if (SUPPORTED_AUDIO_CONTENT_TYPES.has(attachment.mimeType)) {
+    return 'audio';
+  }
+
+  return 'file';
+}
+
+export function isUploadingFileSticker(attachment: ApiAttachment) {
+  return attachment ? (attachment.mimeType === 'image/webp' || attachment.mimeType === LOTTIE_STICKER_MIME_TYPE
+    || attachment.mimeType === VIDEO_STICKER_MIME_TYPE) : undefined;
+}
+
+export function getMessageLink(peer: ApiPeer, topicId?: ThreadId, messageId?: number) {
+  const chatUsername = getMainUsername(peer);
+
+  const normalizedId = getCleanPeerId(peer.id);
+
+  const chatPart = chatUsername || `c/${normalizedId}`;
+  const topicPart = topicId && topicId !== MAIN_THREAD_ID ? `/${topicId}` : '';
+  const messagePart = messageId ? `/${messageId}` : '';
+  return `${TME_LINK_PREFIX}${chatPart}${topicPart}${messagePart}`;
 }

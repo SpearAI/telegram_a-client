@@ -11,15 +11,15 @@ import { STICKER_SIZE_INVITES, TME_LINK_PREFIX } from '../../../config';
 import { getMainUsername, isChatChannel } from '../../../global/helpers';
 import { selectChat, selectTabState } from '../../../global/selectors';
 import { copyTextToClipboard } from '../../../util/clipboard';
-import { formatCountdown, MILLISECONDS_IN_DAY } from '../../../util/dateFormat';
+import { formatCountdown, MILLISECONDS_IN_DAY } from '../../../util/dates/dateFormat';
 import { getServerTime } from '../../../util/serverTime';
 import { LOCAL_TGS_URLS } from '../../common/helpers/animatedAssets';
 
+import useInterval from '../../../hooks/schedulers/useInterval';
 import useFlag from '../../../hooks/useFlag';
 import useForceUpdate from '../../../hooks/useForceUpdate';
 import useHistoryBack from '../../../hooks/useHistoryBack';
-import useInterval from '../../../hooks/useInterval';
-import useLang from '../../../hooks/useLang';
+import useOldLang from '../../../hooks/useOldLang';
 
 import AnimatedIcon from '../../common/AnimatedIcon';
 import LinkField from '../../common/LinkField';
@@ -71,7 +71,7 @@ const ManageInvites: FC<OwnProps & StateProps> = ({
     setOpenedInviteInfo,
   } = getActions();
 
-  const lang = useLang();
+  const lang = useOldLang();
 
   const [isDeleteRevokeAllDialogOpen, openDeleteRevokeAllDialog, closeDeleteRevokeAllDialog] = useFlag();
   const [isRevokeDialogOpen, openRevokeDialog, closeRevokeDialog] = useFlag();
@@ -92,9 +92,7 @@ const ManageInvites: FC<OwnProps & StateProps> = ({
       ));
   }, [exportedInvites]);
   const forceUpdate = useForceUpdate();
-  useInterval(() => {
-    forceUpdate();
-  }, hasDetailedCountdown ? 1000 : undefined);
+  useInterval(forceUpdate, hasDetailedCountdown ? 1000 : undefined);
 
   const chatMainUsername = useMemo(() => chat && getMainUsername(chat), [chat]);
   const primaryInvite = exportedInvites?.find(({ isPermanent }) => isPermanent);
@@ -377,7 +375,7 @@ const ManageInvites: FC<OwnProps & StateProps> = ({
 
 export default memo(withGlobal<OwnProps>(
   (global, { chatId }): StateProps => {
-    const { invites, revokedInvites } = selectTabState(global).management.byChatId[chatId];
+    const { invites, revokedInvites } = selectTabState(global).management.byChatId[chatId] || {};
     const chat = selectChat(global, chatId);
     const isChannel = chat && isChatChannel(chat);
 

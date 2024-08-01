@@ -8,20 +8,20 @@ import { getActions, getGlobal, withGlobal } from '../../global';
 import type { ApiAvailableReaction, ApiMessage, ApiReaction } from '../../api/types';
 import { LoadMoreDirection } from '../../types';
 
-import { getReactionUniqueKey, isSameReaction } from '../../global/helpers';
+import { getReactionKey, isSameReaction } from '../../global/helpers';
 import {
   selectChatMessage,
   selectTabState,
 } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
-import { formatDateAtTime } from '../../util/dateFormat';
+import { formatDateAtTime } from '../../util/dates/dateFormat';
 import { unique } from '../../util/iteratees';
 import { formatIntegerCompact } from '../../util/textFormat';
 
 import useFlag from '../../hooks/useFlag';
 import useInfiniteScroll from '../../hooks/useInfiniteScroll';
-import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
+import useOldLang from '../../hooks/useOldLang';
 
 import Avatar from '../common/Avatar';
 import FullNameTitle from '../common/FullNameTitle';
@@ -66,7 +66,7 @@ const ReactorListModal: FC<OwnProps & StateProps> = ({
   const chatsById = getGlobal().chats.byId;
   const usersById = getGlobal().users.byId;
 
-  const lang = useLang();
+  const lang = useOldLang();
   const [isClosing, startClosing, stopClosing] = useFlag(false);
   const [chosenTab, setChosenTab] = useState<ApiReaction | undefined>(undefined);
   const canShowFilters = reactors && reactions && reactors.count >= MIN_REACTIONS_COUNT_FOR_FILTERS
@@ -162,7 +162,7 @@ const ReactorListModal: FC<OwnProps & StateProps> = ({
               .find((reactionsCount) => isSameReaction(reactionsCount.reaction, reaction))?.count;
             return (
               <Button
-                key={getReactionUniqueKey(reaction)}
+                key={getReactionKey(reaction)}
                 className={buildClassName(isSameReaction(chosenTab, reaction) && 'chosen')}
                 size="tiny"
                 ripple
@@ -201,7 +201,7 @@ const ReactorListModal: FC<OwnProps & StateProps> = ({
 
                   items.push(
                     <ListItem
-                      key={`${peerId}-${getReactionUniqueKey(r.reaction)}`}
+                      key={`${peerId}-${getReactionKey(r.reaction)}`}
                       className="chat-item-clickable reactors-list-item"
                       // eslint-disable-next-line react/jsx-no-bind
                       onClick={() => handleClick(peerId)}
@@ -271,7 +271,7 @@ export default memo(withGlobal<OwnProps>(
       reactions: message?.reactions,
       reactors: message?.reactors,
       seenByDates: message?.seenByDates,
-      availableReactions: global.availableReactions,
+      availableReactions: global.reactions.availableReactions,
     };
   },
 )(ReactorListModal));

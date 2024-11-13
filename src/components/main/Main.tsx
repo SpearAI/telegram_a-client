@@ -282,6 +282,10 @@ const Main: FC<OwnProps & StateProps> = ({
         return;
       }
 
+      if (!crmPageInitialized) {
+        window.parent.postMessage({ type: 'nReachUserLogin' }, '*');
+      }
+
       // Handle the message
       const data = event.data;
 

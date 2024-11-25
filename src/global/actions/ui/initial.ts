@@ -1,5 +1,6 @@
 import { addCallback } from '../../../lib/teact/teactn';
 
+import type { LangCode } from '../../../types';
 import type { ActionReturnType, GlobalState } from '../../types';
 
 import { requestMutation } from '../../../lib/fasterdom/fasterdom';
@@ -32,7 +33,7 @@ setSystemThemeChangeCallback((theme) => {
   // eslint-disable-next-line eslint-multitab-tt/no-immediate-global
   let global = getGlobal();
 
-  if (!global.settings.byKey.shouldUseSystemTheme) return;
+  if (!global.isInited || !global.settings.byKey.shouldUseSystemTheme) return;
 
   global = replaceSettings(global, { theme });
   setGlobal(global);
@@ -134,7 +135,7 @@ addCallback((global: GlobalState) => {
 
   const performanceType = selectPerformanceSettings(global);
 
-  void oldSetLanguage(language, undefined, true);
+  void oldSetLanguage(language as LangCode, undefined, true);
 
   requestMutation(() => {
     document.documentElement.style.setProperty(

@@ -6,7 +6,7 @@ import { getActions } from '../../global';
 
 import type { ApiAudio, ApiMessage, ApiVoice } from '../../api/types';
 import type { BufferedRange } from '../../hooks/useBuffering';
-import type { LangFn } from '../../hooks/useOldLang';
+import type { OldLangFn } from '../../hooks/useOldLang';
 import type { ISettings } from '../../types';
 import { ApiMediaFormat } from '../../api/types';
 import { AudioOrigin } from '../../types';
@@ -38,7 +38,7 @@ import useLastCallback from '../../hooks/useLastCallback';
 import useMedia from '../../hooks/useMedia';
 import useMediaWithLoadProgress from '../../hooks/useMediaWithLoadProgress';
 import useOldLang from '../../hooks/useOldLang';
-import useShowTransition from '../../hooks/useShowTransition';
+import useShowTransitionDeprecated from '../../hooks/useShowTransitionDeprecated';
 
 import Button from '../ui/Button';
 import Link from '../ui/Link';
@@ -126,7 +126,7 @@ const Audio: FC<OwnProps> = ({
   const { isRtl } = lang;
 
   const { isMobile } = useAppLayout();
-  const [isActivated, setIsActivated] = useState(Boolean(autoPlay));
+  const [isActivated, setIsActivated] = useState(false);
   const shouldLoad = isActivated || PRELOAD;
   const coverHash = getMediaHash(media, 'pictogram');
   const coverBlobUrl = useMedia(coverHash, false, ApiMediaFormat.BlobUrl);
@@ -213,7 +213,7 @@ const Audio: FC<OwnProps> = ({
   const {
     shouldRender: shouldRenderSpinner,
     transitionClassNames: spinnerClassNames,
-  } = useShowTransition(isTransferring);
+  } = useShowTransitionDeprecated(isTransferring);
 
   const shouldRenderCross = shouldRenderSpinner && (isLoadingForPlaying || isUploading);
 
@@ -248,7 +248,7 @@ const Audio: FC<OwnProps> = ({
     if (isDownloading) {
       cancelMediaDownload({ media });
     } else {
-      downloadMedia({ media });
+      downloadMedia({ media, originMessage: message });
     }
   });
 
@@ -495,7 +495,7 @@ function getSeeklineSpikeAmounts(isMobile?: boolean, withAvatar?: boolean) {
 }
 
 function renderAudio(
-  lang: LangFn,
+  lang: OldLangFn,
   audio: ApiAudio,
   duration: number,
   isPlaying: boolean,

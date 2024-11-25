@@ -10,7 +10,6 @@ import {
 } from '../../global/helpers';
 import {
   selectSender,
-  selectUserFullInfo,
 } from '../../global/selectors';
 import { formatMediaDateTime } from '../../util/dates/dateFormat';
 import renderText from '../common/helpers/renderText';
@@ -29,7 +28,6 @@ type OwnProps = {
 
 type StateProps = {
   owner?: ApiPeer;
-  isFallbackAvatar?: boolean;
 };
 
 const BULLET = '\u2022';
@@ -38,7 +36,6 @@ const ANIMATION_DURATION = 350;
 const SenderInfo: FC<OwnProps & StateProps> = ({
   owner,
   item,
-  isFallbackAvatar,
 }) => {
   const {
     closeMediaViewer,
@@ -71,11 +68,18 @@ const SenderInfo: FC<OwnProps & StateProps> = ({
     if (!item || item.type === 'standalone') return undefined;
 
     const avatarOwner = item.type === 'avatar' ? item.avatarOwner : undefined;
-    const avatar = avatarOwner?.photos?.[item.mediaIndex!];
+    const profilePhotos = item.type === 'avatar' ? item.profilePhotos : undefined;
+    const avatar = profilePhotos?.photos[item.mediaIndex!];
+    const isFallbackAvatar = avatar?.id === profilePhotos?.fallbackPhoto?.id;
+    const isPersonalAvatar = avatar?.id === profilePhotos?.personalPhoto?.id;
     const date = item.type === 'message' ? item.message.date : avatar?.date;
     if (!date) return undefined;
 
     const formattedDate = formatMediaDateTime(lang, date * 1000, true);
+    const count = profilePhotos?.count
+      && (profilePhotos.count + (profilePhotos?.fallbackPhoto ? 1 : 0));
+    const currentIndex = item.mediaIndex! + 1 + (profilePhotos?.personalPhoto ? -1 : 0);
+    const countText = count && lang('Of', [currentIndex, count]);
 
     const parts: string[] = [];
     if (avatar) {
@@ -83,16 +87,21 @@ const SenderInfo: FC<OwnProps & StateProps> = ({
       const isChannel = chat && isChatChannel(chat);
       const isGroup = chat && isChatGroup(chat);
       parts.push(lang(
-        isFallbackAvatar ? 'lng_mediaview_profile_public_photo'
-          : isChannel ? 'lng_mediaview_channel_photo'
-            : isGroup ? 'lng_mediaview_group_photo' : 'lng_mediaview_profile_photo',
+        isPersonalAvatar ? 'lng_mediaview_profile_photo_by_you'
+          : isFallbackAvatar ? 'lng_mediaview_profile_public_photo'
+            : isChannel ? 'lng_mediaview_channel_photo'
+              : isGroup ? 'lng_mediaview_group_photo' : 'lng_mediaview_profile_photo',
       ));
+    }
+
+    if (countText && !isPersonalAvatar && !isFallbackAvatar) {
+      parts.push(countText);
     }
 
     parts.push(formattedDate);
 
     return parts.join(` ${BULLET} `);
-  }, [item, isFallbackAvatar, lang]);
+  }, [item, lang]);
 
   if (!owner) {
     return undefined;
@@ -122,15 +131,8 @@ export default withGlobal<OwnProps>(
 
     const owner = item?.type === 'avatar' ? item.avatarOwner : messageSender;
 
-    const fallbackAvatar = item?.type === 'avatar'
-      ? selectUserFullInfo(global, item.avatarOwner.id)?.fallbackPhoto : undefined;
-
-    const isFallbackAvatar = fallbackAvatar && item?.type === 'avatar'
-      && item.avatarOwner.photos?.[item.mediaIndex].id === fallbackAvatar.id;
-
     return {
       owner,
-      isFallbackAvatar,
     };
   },
 )(SenderInfo);

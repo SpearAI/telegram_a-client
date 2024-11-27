@@ -1,3 +1,4 @@
+/* <-- NREACH CODE START --> */
 import { getGlobal } from '../global';
 
 import type { GlobalState } from '../global/types';
@@ -101,3 +102,5 @@ export function updateCrmWithTimeout<T extends GlobalState>(global: T, telegramT
 //
 //   return result;
 // }
+
+/* <-- NREACH CODE END --> */

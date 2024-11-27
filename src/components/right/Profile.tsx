@@ -470,6 +470,7 @@ const Profile: FC<OwnProps & StateProps> = ({
   const canRenderContent = useAsyncRendering([chatId, threadId, resultType, renderingActiveTab], renderingDelay);
 
   function getMemberContextAction(memberId: string): MenuItemContextAction[] | undefined {
+    /* <-- NREACH CODE START --> */
     const chatIdToCRMEidMap = JSON.parse(localStorage.getItem('crmMapper') || '{}');
     const memberEid = chatIdToCRMEidMap[memberId]?.eid;
 
@@ -508,6 +509,7 @@ const Profile: FC<OwnProps & StateProps> = ({
         },
       },
     ];
+    /* <-- NREACH CODE END --> */
   }
 
   function renderContent() {

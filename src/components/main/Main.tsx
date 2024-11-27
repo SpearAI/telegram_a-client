@@ -267,6 +267,8 @@ const Main = ({
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line no-null/no-null
   const leftColumnRef = useRef<HTMLDivElement>(null);
+
+  /* <-- NREACH CODE START --> */
   const [crmPageInitialized, setCrmPageInitialized] = useState(false);
 
   // Example in a React component or similar central script
@@ -322,6 +324,8 @@ const Main = ({
       window.removeEventListener('message', receiveMessage);
     };
   }, [crmPageInitialized]);
+
+  /* <-- NREACH CODE END --> */
 
   const { isDesktop } = useAppLayout();
   useEffect(() => {

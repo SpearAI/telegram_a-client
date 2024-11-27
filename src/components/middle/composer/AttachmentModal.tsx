@@ -15,11 +15,11 @@ import {
   BASE_EMOJI_KEYWORD_LANG,
   EDITABLE_INPUT_MODAL_ID,
   SUPPORTED_AUDIO_CONTENT_TYPES,
-  SUPPORTED_IMAGE_CONTENT_TYPES,
+  SUPPORTED_PHOTO_CONTENT_TYPES,
   SUPPORTED_VIDEO_CONTENT_TYPES,
 } from '../../../config';
 import { requestMutation } from '../../../lib/fasterdom/fasterdom';
-import { getAttachmentType, isUserId } from '../../../global/helpers';
+import { getAttachmentMediaType, isUserId } from '../../../global/helpers';
 import { selectChatFullInfo, selectIsChatWithSelf } from '../../../global/selectors';
 import { selectCurrentLimit } from '../../../global/selectors/limits';
 import buildClassName from '../../../util/buildClassName';
@@ -33,11 +33,13 @@ import { getHtmlTextLength } from './helpers/getHtmlTextLength';
 import useAppLayout from '../../../hooks/useAppLayout';
 import useContextMenuHandlers from '../../../hooks/useContextMenuHandlers';
 import useDerivedState from '../../../hooks/useDerivedState';
+import useEffectOnce from '../../../hooks/useEffectOnce';
 import useFlag from '../../../hooks/useFlag';
 import useGetSelectionRange from '../../../hooks/useGetSelectionRange';
 import useLastCallback from '../../../hooks/useLastCallback';
 import useOldLang from '../../../hooks/useOldLang';
-import usePrevious from '../../../hooks/usePrevious';
+import usePreviousDeprecated from '../../../hooks/usePreviousDeprecated';
+import useResizeObserver from '../../../hooks/useResizeObserver';
 import useScrolledState from '../../../hooks/useScrolledState';
 import useCustomEmojiTooltip from './hooks/useCustomEmojiTooltip';
 import useEmojiTooltip from './hooks/useEmojiTooltip';
@@ -139,6 +141,10 @@ const AttachmentModal: FC<OwnProps & StateProps> = ({
   onRemoveSymbol,
   onEmojiSelect,
 }) => {
+  // eslint-disable-next-line no-null/no-null
+  const ref = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line no-null/no-null
+  const svgRef = useRef<SVGSVGElement>(null);
   const { addRecentCustomEmoji, addRecentEmoji, updateAttachmentSettings } = getActions();
 
   const lang = useOldLang();
@@ -149,13 +155,13 @@ const AttachmentModal: FC<OwnProps & StateProps> = ({
   const inputRef = useRef<HTMLDivElement>(null);
 
   const hideTimeoutRef = useRef<number>();
-  const prevAttachments = usePrevious(attachments);
+  const prevAttachments = usePreviousDeprecated(attachments);
   const renderingAttachments = attachments.length ? attachments : prevAttachments;
   const { isMobile } = useAppLayout();
 
   const isEditing = editingMessage && Boolean(editingMessage);
   const isInAlbum = editingMessage && editingMessage?.groupedId;
-  const isEditingMessageFile = isEditing && attachments?.length && getAttachmentType(attachments[0]);
+  const isEditingMessageFile = isEditing && attachments?.length && getAttachmentMediaType(attachments[0]);
   const notEditingFile = isEditingMessageFile !== 'file';
 
   const [isSymbolMenuOpen, openSymbolMenu, closeSymbolMenu] = useFlag();
@@ -388,6 +394,22 @@ const AttachmentModal: FC<OwnProps & StateProps> = ({
     }));
   });
 
+  const handleResize = useLastCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return;
+    }
+
+    const { width, height } = svg.getBoundingClientRect();
+    svg.viewBox.baseVal.width = width;
+    svg.viewBox.baseVal.height = height;
+  });
+
+  // Can't listen for SVG resize
+  useResizeObserver(ref, handleResize);
+
+  useEffectOnce(handleResize);
+
   useEffect(() => {
     const mainButton = mainButtonRef.current;
     const input = document.getElementById(ATTACHMENT_MODAL_INPUT_ID);
@@ -428,7 +450,7 @@ const AttachmentModal: FC<OwnProps & StateProps> = ({
 
   const [areAllPhotos, areAllVideos, areAllAudios] = useMemo(() => {
     if (!isQuickGallery || !renderingAttachments) return [false, false, false];
-    const everyPhoto = renderingAttachments.every((a) => SUPPORTED_IMAGE_CONTENT_TYPES.has(a.mimeType));
+    const everyPhoto = renderingAttachments.every((a) => SUPPORTED_PHOTO_CONTENT_TYPES.has(a.mimeType));
     const everyVideo = renderingAttachments.every((a) => SUPPORTED_VIDEO_CONTENT_TYPES.has(a.mimeType));
     const everyAudio = renderingAttachments.every((a) => SUPPORTED_AUDIO_CONTENT_TYPES.has(a.mimeType));
     return [everyPhoto, everyVideo, everyAudio];
@@ -575,6 +597,9 @@ const AttachmentModal: FC<OwnProps & StateProps> = ({
         data-attach-description={lang('Preview.Dragging.AddItems', 10)}
         data-dropzone
       >
+        <svg className={styles.dropOutlineContainer}>
+          <rect className={styles.dropOutline} x="0" y="0" width="100%" height="100%" rx="8" />
+        </svg>
         <div
           className={buildClassName(
             styles.attachments,

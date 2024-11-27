@@ -10,7 +10,7 @@ import type { IconName } from '../../types/icons';
 import { MediaViewerOrigin } from '../../types';
 
 import {
-  getMainUsername, getUserStatus, isUserOnline,
+  getMainUsername, getUserStatus, isSystemBot, isUserOnline,
 } from '../../global/helpers';
 import { selectChatMessages, selectUser, selectUserStatus } from '../../global/selectors';
 import buildClassName from '../../util/buildClassName';
@@ -102,7 +102,7 @@ const PrivateChatInfo: FC<OwnProps & StateProps> = ({
   const {
     loadFullUser,
     openMediaViewer,
-    loadProfilePhotos,
+    loadMoreProfilePhotos,
   } = getActions();
 
   const lang = useOldLang();
@@ -112,7 +112,7 @@ const PrivateChatInfo: FC<OwnProps & StateProps> = ({
   useEffect(() => {
     if (userId) {
       if (withFullInfo && isSynced) loadFullUser({ userId });
-      if (withMediaViewer) loadProfilePhotos({ profileId: userId });
+      if (withMediaViewer) loadMoreProfilePhotos({ peerId: userId, isPreload: true });
     }
   }, [userId, withFullInfo, withMediaViewer, isSynced]);
 
@@ -168,6 +168,10 @@ const PrivateChatInfo: FC<OwnProps & StateProps> = ({
 
     if (typingStatus) {
       return <TypingStatus typingStatus={typingStatus} />;
+    }
+
+    if (isSystemBot(user.id)) {
+      return undefined;
     }
 
     const translatedStatus = getUserStatus(lang, user, userStatus);

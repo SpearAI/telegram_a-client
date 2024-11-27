@@ -172,7 +172,7 @@ const useAudioPlayer = (
 
   // Autoplay once `src` is present
   useEffectWithPrevDeps(([prevShouldPlay, prevSrc]) => {
-    if (prevShouldPlay === shouldPlay && src === prevSrc && trackType !== 'oneTimeVoice') {
+    if (prevShouldPlay === shouldPlay && src === prevSrc) {
       return;
     }
 

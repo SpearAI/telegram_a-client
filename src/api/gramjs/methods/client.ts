@@ -2,7 +2,7 @@ import {
   Api as GramJs,
   sessions,
 } from '../../../lib/gramjs';
-import type { TwoFaParams } from '../../../lib/gramjs/client/2fa';
+import type { TwoFaParams, TwoFaPasswordParams } from '../../../lib/gramjs/client/2fa';
 import TelegramClient from '../../../lib/gramjs/client/TelegramClient';
 import { Logger as GramJsLogger } from '../../../lib/gramjs/extensions/index';
 
@@ -12,23 +12,27 @@ import type {
   ApiMediaFormat,
   ApiOnProgress,
   ApiSessionData,
-  OnApiUpdate,
 } from '../../types';
 
 import {
   APP_CODE_NAME,
-  DEBUG, DEBUG_GRAMJS, IS_TEST, UPLOAD_WORKERS,
+  DEBUG, DEBUG_GRAMJS, IS_TEST, LANG_PACK, UPLOAD_WORKERS,
 } from '../../../config';
 import { pause } from '../../../util/schedulers';
-import { buildApiMessage, setMessageBuilderCurrentUserId } from '../apiBuilders/messages';
+import {
+  buildApiMessage,
+  setMessageBuilderCurrentUserId,
+} from '../apiBuilders/messages';
 import { buildApiPeerId } from '../apiBuilders/peers';
 import { buildApiStory } from '../apiBuilders/stories';
 import { buildApiUser, buildApiUserFullInfo } from '../apiBuilders/users';
-import { buildInputPeerFromLocalDb } from '../gramjsBuilders';
+import { buildInputPeerFromLocalDb, getEntityTypeById } from '../gramjsBuilders';
 import {
-  addEntitiesToLocalDb, addMessageToLocalDb, addStoryToLocalDb, addUserToLocalDb, isResponseUpdate, log,
+  addStoryToLocalDb, addUserToLocalDb, isResponseUpdate, log,
 } from '../helpers';
 import localDb, { clearLocalDb, type RepairInfo } from '../localDb';
+import { sendApiUpdate } from '../updates/apiUpdateEmitter';
+import { processAndUpdateEntities, processMessageAndUpdateThreadInfo } from '../updates/entityProcessor';
 import {
   getDifference,
   init as initUpdatesManager,
@@ -55,23 +59,21 @@ const gramJsUpdateEventBuilder = { build: (update: object) => update };
 const CHAT_ABORT_CONTROLLERS = new Map<string, ChatAbortController>();
 const ABORT_CONTROLLERS = new Map<string, AbortController>();
 
-let onUpdate: OnApiUpdate;
 let client: TelegramClient;
 let currentUserId: string | undefined;
 
-export async function init(_onUpdate: OnApiUpdate, initialArgs: ApiInitialArgs) {
+export async function init(initialArgs: ApiInitialArgs) {
   if (DEBUG) {
     // eslint-disable-next-line no-console
     console.log('>>> START INIT API');
   }
 
-  onUpdate = _onUpdate;
-
   const {
-    userAgent, platform, sessionData, isTest, isWebmSupported, maxBufferSize, webAuthToken, dcId,
+    userAgent, platform, sessionData, isWebmSupported, maxBufferSize, webAuthToken, dcId,
     mockScenario, shouldForceHttpTransport, shouldAllowHttpTransport,
-    shouldDebugExportedSenders, langCode,
+    shouldDebugExportedSenders, langCode, isTestServerRequested,
   } = initialArgs;
+
   const session = new sessions.CallbackSession(sessionData, onSessionUpdate);
 
   // eslint-disable-next-line no-restricted-globals
@@ -92,9 +94,11 @@ export async function init(_onUpdate: OnApiUpdate, initialArgs: ApiInitialArgs) 
       shouldDebugExportedSenders,
       shouldForceHttpTransport,
       shouldAllowHttpTransport,
-      testServers: isTest,
       dcId,
+      langPack: LANG_PACK,
       langCode,
+      systemLangCode: navigator.language,
+      isTestServerRequested,
     } as any,
   );
 
@@ -130,7 +134,7 @@ export async function init(_onUpdate: OnApiUpdate, initialArgs: ApiInitialArgs) 
       console.error(err);
 
       if (err.message !== 'Disconnect' && err.message !== 'Cannot send requests while disconnected') {
-        onUpdate({
+        sendApiUpdate({
           '@type': 'updateConnectionState',
           connectionState: 'connectionStateBroken',
         });
@@ -147,7 +151,7 @@ export async function init(_onUpdate: OnApiUpdate, initialArgs: ApiInitialArgs) 
 
     onAuthReady();
     onSessionUpdate(session.getSessionData());
-    onUpdate({ '@type': 'updateApiReady' });
+    sendApiUpdate({ '@type': 'updateApiReady' });
 
     initUpdatesManager(invokeRequest);
 
@@ -191,7 +195,7 @@ export function getClient() {
 }
 
 function onSessionUpdate(sessionData: ApiSessionData) {
-  onUpdate({
+  sendApiUpdate({
     '@type': 'updateSession',
     sessionData,
   });
@@ -276,6 +280,8 @@ export async function invokeRequest<T extends GramJs.AnyRequest>(
 
     const result = await client.invoke(request, dcId, abortSignal, shouldRetryOnTimeout);
 
+    processAndUpdateEntities(result);
+
     if (DEBUG) {
       log('RESPONSE', request.className, result);
     }
@@ -337,6 +343,19 @@ export async function downloadMedia(
       }
     }
 
+    if (err.message === 'FILE_ID_INVALID' && args.url.includes('avatar')) {
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.warn('Inaccessible avatar image', args.url);
+      }
+      return undefined;
+    }
+
+    if (DEBUG) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to download media', args.url, err);
+    }
+
     throw err;
   }
 }
@@ -351,6 +370,10 @@ export function updateTwoFaSettings(params: TwoFaParams) {
 
 export function getTmpPassword(currentPassword: string, ttl?: number) {
   return client.getTmpPassword(currentPassword, ttl);
+}
+
+export function getCurrentPassword(params: TwoFaPasswordParams) {
+  return client.getCurrentPassword(params);
 }
 
 export function abortChatRequests(params: { chatId: string; threadId?: ThreadId }) {
@@ -401,7 +424,7 @@ export function dispatchErrorUpdate<T extends GramJs.AnyRequest>(err: Error, req
 
   const { message } = err;
 
-  onUpdate({
+  sendApiUpdate({
     '@type': 'error',
     error: {
       message,
@@ -420,7 +443,7 @@ async function handleTerminatedSession() {
     });
   } catch (err: any) {
     if (err.message === 'AUTH_KEY_UNREGISTERED' || err.message === 'SESSION_REVOKED') {
-      onUpdate({
+      sendApiUpdate({
         '@type': 'updateConnectionState',
         connectionState: 'connectionStateBroken',
       });
@@ -465,10 +488,11 @@ export async function repairFileReference({
 }
 
 async function repairMessageMedia(peerId: string, messageId: number) {
+  const type = getEntityTypeById(peerId);
   const peer = buildInputPeerFromLocalDb(peerId);
   if (!peer) return false;
   const result = await invokeRequest(
-    peer
+    type === 'channel'
       ? new GramJs.channels.GetMessages({
         channel: peer,
         id: [new GramJs.InputMessageID({ id: messageId })],
@@ -489,13 +513,12 @@ async function repairMessageMedia(peerId: string, messageId: number) {
 
   const message = result.messages[0];
   if (message instanceof GramJs.MessageEmpty) return false;
-  addEntitiesToLocalDb(result.users);
-  addEntitiesToLocalDb(result.chats);
-  addMessageToLocalDb(message);
+
+  processMessageAndUpdateThreadInfo(message);
 
   const apiMessage = buildApiMessage(message);
   if (apiMessage) {
-    onUpdate({
+    sendApiUpdate({
       '@type': 'updateMessage',
       chatId: apiMessage.chatId,
       id: apiMessage.id,
@@ -517,13 +540,12 @@ async function repairStoryMedia(peerId: string, storyId: number) {
   });
   if (!result) return false;
 
-  addEntitiesToLocalDb(result.users);
   result.stories.forEach((story) => {
-    addStoryToLocalDb(story, peerId);
-
     const apiStory = buildApiStory(peerId, story);
     if (!apiStory || 'isDeleted' in apiStory) return;
-    onUpdate({
+
+    addStoryToLocalDb(story, peerId);
+    sendApiUpdate({
       '@type': 'updateStory',
       peerId,
       story: apiStory,

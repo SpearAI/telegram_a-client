@@ -7,6 +7,10 @@
     z-index: var(--z-modal-confirm);
   }
 
+  &.low-priority {
+    z-index: var(--z-modal-low-priority);
+  }
+
   &.delete,
   &.error,
   &.confirm,
@@ -31,11 +35,11 @@
 
   &.slim {
     .modal-dialog {
-      max-width: 25rem;
+      max-width: 26.25rem;
     }
 
     .modal-content {
-      max-height: min(92vh, 32rem);
+      max-height: min(92vh, 36rem);
     }
   }
 
@@ -162,16 +166,6 @@
   .modal-content > p {
     unicode-bidi: plaintext;
     text-align: initial;
-    font-size: 1.00rem;
-  }
-
-  .modal-center-header {
-    justify-content: center;
-  }
-  .modal-center-title{
-    unicode-bidi: plaintext;
-    text-align: center;
-    font-size: 1.50rem;
   }
 
   .modal-about {

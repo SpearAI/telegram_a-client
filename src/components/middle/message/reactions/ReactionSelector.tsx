@@ -3,7 +3,12 @@ import React, { memo, useMemo, useRef } from '../../../../lib/teact/teact';
 import { getActions } from '../../../../global';
 
 import type {
-  ApiAvailableReaction, ApiChatReactions, ApiReaction, ApiReactionCount,
+  ApiAvailableReaction,
+  ApiChatReactions,
+  ApiReaction,
+  ApiReactionCount,
+  ApiReactionCustomEmoji,
+  ApiReactionPaid,
 } from '../../../../api/types';
 import type { IAnchorPosition } from '../../../../types';
 
@@ -22,6 +27,8 @@ import ReactionSelectorReaction from './ReactionSelectorReaction';
 
 import './ReactionSelector.scss';
 
+type RenderableReactions = (ApiAvailableReaction | ApiReactionCustomEmoji | ApiReactionPaid)[];
+
 type OwnProps = {
   enabledReactions?: ApiChatReactions;
   isPrivate?: boolean;
@@ -30,7 +37,7 @@ type OwnProps = {
   effectReactions?: ApiReaction[];
   allAvailableReactions?: ApiAvailableReaction[];
   currentReactions?: ApiReactionCount[];
-  maxUniqueReactions?: number;
+  reactionsLimit?: number;
   isReady?: boolean;
   canBuyPremium?: boolean;
   isCurrentUserPremium?: boolean;
@@ -39,8 +46,11 @@ type OwnProps = {
   isInSavedMessages?: boolean;
   isInStoryViewer?: boolean;
   isForEffects?: boolean;
+  isWithPaidReaction?: boolean;
   onClose?: NoneToVoidFunction;
   onToggleReaction: (reaction: ApiReaction) => void;
+  onSendPaidReaction?: NoneToVoidFunction;
+  onShowPaidReactionModal?: NoneToVoidFunction;
   onShowMore: (position: IAnchorPosition) => void;
 };
 
@@ -54,7 +64,7 @@ const ReactionSelector: FC<OwnProps> = ({
   defaultTagReactions,
   enabledReactions,
   currentReactions,
-  maxUniqueReactions,
+  reactionsLimit,
   isPrivate,
   isReady,
   canPlayAnimatedEmojis,
@@ -64,8 +74,11 @@ const ReactionSelector: FC<OwnProps> = ({
   isInStoryViewer,
   isForEffects,
   effectReactions,
+  isWithPaidReaction,
   onClose,
   onToggleReaction,
+  onSendPaidReaction,
+  onShowPaidReactionModal,
   onShowMore,
 }) => {
   const { openPremiumModal } = getActions();
@@ -75,34 +88,42 @@ const ReactionSelector: FC<OwnProps> = ({
 
   const areReactionsLocked = isInSavedMessages && !isCurrentUserPremium && !isInStoryViewer;
 
+  const shouldUseCurrentReactions = Boolean(reactionsLimit
+    && currentReactions && currentReactions.length >= reactionsLimit);
+
   const availableReactions = useMemo(() => {
-    const reactions = isForEffects ? effectReactions : isInSavedMessages ? defaultTagReactions
-      : (enabledReactions?.type === 'some' ? enabledReactions.allowed
-        : allAvailableReactions?.map((reaction) => reaction.reaction));
-    const filteredReactions = reactions?.map((reaction) => {
-      const isCustomReaction = 'documentId' in reaction;
+    const reactions = (() => {
+      if (shouldUseCurrentReactions) return currentReactions?.map((reaction) => reaction.reaction);
+      if (isForEffects) return effectReactions;
+      if (isInSavedMessages) return defaultTagReactions;
+      if (enabledReactions?.type === 'some') return enabledReactions.allowed;
+      return allAvailableReactions?.map((reaction) => reaction.reaction);
+    })();
+
+    const filteredReactions: RenderableReactions = reactions?.map((reaction) => {
+      const isCustomReaction = reaction.type === 'custom';
       const availableReaction = allAvailableReactions?.find((r) => isSameReaction(r.reaction, reaction));
 
       if (isForEffects) return availableReaction;
 
       if ((!isCustomReaction && !availableReaction) || availableReaction?.isInactive) return undefined;
 
-      if (!isPrivate && (!enabledReactions || !canSendReaction(reaction, enabledReactions))) {
-        return undefined;
-      }
-
-      if (maxUniqueReactions && currentReactions && currentReactions.length >= maxUniqueReactions
-        && !currentReactions.some(({ reaction: currentReaction }) => isSameReaction(reaction, currentReaction))) {
+      if (!isPrivate && !shouldUseCurrentReactions
+         && (!enabledReactions || !canSendReaction(reaction, enabledReactions))) {
         return undefined;
       }
 
       return isCustomReaction ? reaction : availableReaction;
     }).filter(Boolean) || [];
 
-    return sortReactions(filteredReactions, topReactions);
+    const sortedReactions = sortReactions(filteredReactions, topReactions);
+    if (isWithPaidReaction) {
+      sortedReactions.unshift({ type: 'paid' });
+    }
+    return sortedReactions;
   }, [
     allAvailableReactions, currentReactions, defaultTagReactions, enabledReactions, isInSavedMessages, isPrivate,
-    maxUniqueReactions, topReactions, isForEffects, effectReactions,
+    topReactions, isForEffects, effectReactions, shouldUseCurrentReactions, isWithPaidReaction,
   ]);
 
   const reactionsToRender = useMemo(() => {
@@ -191,6 +212,8 @@ const ReactionSelector: FC<OwnProps> = ({
                   key={getReactionKey(reaction)}
                   isReady={isReady}
                   onToggleReaction={onToggleReaction}
+                  onSendPaidReaction={onSendPaidReaction}
+                  onShowPaidReactionModal={onShowPaidReactionModal}
                   reaction={reaction}
                   noAppearAnimation={!canPlayAnimatedEmojis}
                   chosen={userReactionIndexes.has(i)}

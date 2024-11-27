@@ -26,7 +26,7 @@ import {
   MAX_BUFFER_SIZE,
 } from '../../util/windowEnvironment';
 import { getDocumentHasPreview } from '../../components/common/helpers/documentInfo';
-import { getAttachmentType, matchLinkInMessageText } from './messages';
+import { getAttachmentMediaType, matchLinkInMessageText } from './messages';
 
 export type MediaWithThumbs = ApiPhoto | ApiVideo | ApiDocument | ApiSticker | ApiMediaExtendedPreview;
 export type DownloadableMedia = ApiPhoto | ApiVideo | ApiDocument | ApiSticker | ApiAudio | ApiVoice | ApiWebDocument;
@@ -50,7 +50,7 @@ export function hasMessageMedia(message: MediaContainer) {
     || getMessageDocument(message)
     || getMessageSticker(message)
     || getMessageContact(message)
-    || getMessagePoll(message)
+    || getMessagePollId(message)
     || getMessageAction(message)
     || getMessageAudio(message)
     || getMessageVoice(message)
@@ -58,14 +58,13 @@ export function hasMessageMedia(message: MediaContainer) {
 }
 
 export function hasReplaceableMedia(message: MediaContainer) {
-  const video = getMessageVideo(message);
-  return Boolean((
-    getMessagePhoto(message)
-    || (video && !video?.isRound)
-    || getMessageDocument(message)
-    || getMessageSticker(message)
-    || getMessageAudio(message)
-  ));
+  const {
+    text, photo, video, audio, document,
+  } = message.content;
+
+  if (getMessageVoice(message)) return false;
+
+  return Boolean(text || photo || (video && !video.isGif) || audio || document);
 }
 
 export function getMessagePhoto(message: MediaContainer) {
@@ -127,8 +126,8 @@ export function getMessageContact(message: MediaContainer) {
   return message.content.contact;
 }
 
-export function getMessagePoll(message: MediaContainer) {
-  return message.content.poll;
+export function getMessagePollId(message: MediaContainer) {
+  return message.content.pollId;
 }
 
 export function getMessageInvoice(message: MediaContainer) {
@@ -284,14 +283,18 @@ export function getPhotoMediaHash(photo: ApiPhoto | ApiDocument, target: Target,
     case 'preview':
       return `${base}?size=${isAction ? 'b' : 'x'}`;
     case 'download':
-      return !isVideo ? base : getVideoAvatarMediaHash(photo);
+      return !isVideo ? base : getVideoProfilePhotoMediaHash(photo);
     case 'full':
     default:
       return base;
   }
 }
 
-export function getVideoAvatarMediaHash(photo: ApiPhoto) {
+export function getProfilePhotoMediaHash(photo: ApiPhoto) {
+  return `photo${photo.id}?size=c`;
+}
+
+export function getVideoProfilePhotoMediaHash(photo: ApiPhoto) {
   if (!photo.isVideo) return undefined;
   return `photo${photo.id}?size=u`;
 }
@@ -313,6 +316,10 @@ export function getVideoMediaHash(video: ApiVideo | ApiDocument, target: Target)
     default:
       return appendProgressiveQueryParameters(video, base);
   }
+}
+
+export function getVideoPreviewMediaHash(video: ApiVideo) {
+  return video.hasVideoPreview ? `document${video.id}?size=v` : undefined;
 }
 
 export function getDocumentMediaHash(document: ApiDocument, target: Target) {
@@ -377,6 +384,9 @@ export function getStickerMediaHash(sticker: ApiSticker, target: Target) {
   switch (target) {
     case 'micro':
     case 'pictogram':
+      if (!sticker.previewPhotoSizes?.some((size) => size.type === 's')) {
+        return getStickerMediaHash(sticker, 'preview');
+      }
       return `${base}?size=s`;
     case 'preview':
       return `${base}?size=m`;
@@ -610,10 +620,10 @@ export function canReplaceMessageMedia(message: ApiMessage, attachment: ApiAttac
   const isFile = Boolean(getMessageAudio(message)
     || getMessageVoice(message) || getMessageDocument(message));
 
-  const fileType = getAttachmentType(attachment);
+  const fileType = getAttachmentMediaType(attachment);
 
   return (
-    (isPhotoOrVideo && (fileType === 'image' || fileType === 'video'))
+    (isPhotoOrVideo && (fileType === 'photo' || fileType === 'video'))
     || (isFile && (fileType === 'audio' || fileType === 'file'))
   );
 }

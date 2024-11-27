@@ -1,11 +1,16 @@
 import type { ApiPremiumSection } from '../../global/types';
-import type { ApiInvoiceContainer } from '../../types';
 import type { ApiWebDocument } from './bots';
 import type { ApiChat } from './chats';
 import type {
-  ApiDocument, ApiMessageEntity, ApiPaymentCredentials, BoughtPaidMedia, MediaContent,
+  ApiDocument,
+  ApiFormattedText,
+  ApiInvoice,
+  ApiMessageEntity,
+  ApiPaymentCredentials,
+  BoughtPaidMedia,
 } from './messages';
-import type { PrepaidGiveaway, StatisticsOverviewPercentage } from './statistics';
+import type { ApiStarsSubscriptionPricing } from './misc';
+import type { StatisticsOverviewPercentage } from './statistics';
 import type { ApiUser } from './users';
 
 export interface ApiShippingAddress {
@@ -33,19 +38,32 @@ export interface ApiPaymentFormRegular {
   formId: string;
   providerId: string;
   nativeProvider?: string;
+  nativeParams: ApiPaymentFormNativeParams;
   savedInfo?: ApiPaymentSavedInfo;
   savedCredentials?: ApiPaymentCredentials[];
-  invoiceContainer: ApiInvoiceContainer;
-  nativeParams: ApiPaymentFormNativeParams;
+  invoice: ApiInvoice;
+  title: string;
+  description: string;
+  photo?: ApiWebDocument;
 }
 
 export interface ApiPaymentFormStars {
   type: 'stars';
   formId: string;
   botId: string;
+  title: string;
+  description: string;
+  photo?: ApiWebDocument;
+  invoice: ApiInvoice;
 }
 
-export type ApiPaymentForm = ApiPaymentFormRegular | ApiPaymentFormStars;
+export interface ApiPaymentFormStarGift {
+  type: 'stargift';
+  formId: string;
+  invoice: ApiInvoice;
+}
+
+export type ApiPaymentForm = ApiPaymentFormRegular | ApiPaymentFormStars | ApiPaymentFormStarGift;
 
 export interface ApiPaymentFormNativeParams {
   needCardholderName?: boolean;
@@ -63,26 +81,25 @@ export interface ApiLabeledPrice {
 
 export interface ApiReceiptStars {
   type: 'stars';
-  botId?: string;
-  peer?: ApiStarsTransactionPeer;
   date: number;
-  title?: string;
-  text?: string;
+  botId: string;
+  title: string;
+  description: string;
+  invoice: ApiInvoice;
   photo?: ApiWebDocument;
-  media?: BoughtPaidMedia[];
   currency: string;
   totalAmount: number;
   transactionId: string;
-  messageId?: number;
 }
 
 export interface ApiReceiptRegular {
   type: 'regular';
+  botId: string;
+  providerId: string;
+  description: string;
+  title: string;
+  invoice: ApiInvoice;
   photo?: ApiWebDocument;
-  text?: string;
-  title?: string;
-  currency: string;
-  prices: ApiLabeledPrice[];
   info?: {
     shippingAddress?: ApiShippingAddress;
     phone?: string;
@@ -90,6 +107,8 @@ export interface ApiReceiptRegular {
   };
   tipAmount: number;
   totalAmount: number;
+  currency: string;
+  date: number;
   credentialsTitle: string;
   shippingPrices?: ApiLabeledPrice[];
   shippingMethod?: string;
@@ -133,9 +152,66 @@ export type ApiInputStorePaymentGiftcode = {
   boostChannel?: ApiChat;
   currency: string;
   amount: number;
+  message?: ApiFormattedText;
 };
 
-export type ApiInputStorePaymentPurpose = ApiInputStorePaymentGiveaway | ApiInputStorePaymentGiftcode;
+export type ApiInputStorePaymentStarsTopup = {
+  type: 'stars';
+  stars: number;
+  currency: string;
+  amount: number;
+};
+
+export type ApiInputStorePaymentStarsGift = {
+  type: 'starsgift';
+  user: ApiUser;
+  stars: number;
+  currency: string;
+  amount: number;
+};
+
+export type ApiInputStorePaymentStarsGiveaway = {
+  type: 'starsgiveaway';
+  isOnlyForNewSubscribers?: boolean;
+  areWinnersVisible?: boolean;
+  chat: ApiChat;
+  additionalChannels?: ApiChat[];
+  stars?: number;
+  countries?: string[];
+  prizeDescription?: string;
+  untilDate: number;
+  currency: string;
+  amount: number;
+  users: number;
+};
+
+export type ApiInputStorePaymentPurpose = ApiInputStorePaymentGiveaway | ApiInputStorePaymentGiftcode |
+ApiInputStorePaymentStarsTopup | ApiInputStorePaymentStarsGift | ApiInputStorePaymentStarsGiveaway;
+
+export type ApiStarGift = {
+  isLimited?: true;
+  id: string;
+  stickerId: string;
+  stars: number;
+  availabilityRemains?: number;
+  availabilityTotal?: number;
+  starsToConvert: number;
+  isSoldOut?: true;
+  firstSaleDate?: number;
+  lastSaleDate?: number;
+};
+
+export interface ApiUserStarGift {
+  isNameHidden?: boolean;
+  isUnsaved?: boolean;
+  fromId?: string;
+  date: number;
+  gift: ApiStarGift;
+  message?: ApiFormattedText;
+  messageId?: number;
+  starsToConvert?: number;
+  isConverted?: boolean; // Local field, used for Action Message
+}
 
 export interface ApiPremiumGiftCodeOption {
   users: number;
@@ -144,6 +220,25 @@ export interface ApiPremiumGiftCodeOption {
   amount: number;
 }
 
+export interface ApiPrepaidGiveaway {
+  type: 'giveaway';
+  id: string;
+  months: number;
+  quantity: number;
+  date: number;
+}
+
+export type ApiPrepaidStarsGiveaway = {
+  type: 'starsGiveaway';
+  id: string;
+  stars: number;
+  quantity: number;
+  boosts: number;
+  date: number;
+};
+
+export type ApiTypePrepaidGiveaway = ApiPrepaidGiveaway | ApiPrepaidStarsGiveaway;
+
 export type ApiBoostsStatus = {
   level: number;
   currentLevelBoosts: number;
@@ -151,8 +246,9 @@ export type ApiBoostsStatus = {
   nextLevelBoosts?: number;
   hasMyBoost?: boolean;
   boostUrl: string;
+  giftBoosts?: number;
   premiumSubscribers?: StatisticsOverviewPercentage;
-  prepaidGiveaways?: PrepaidGiveaway[];
+  prepaidGiveaways?: ApiTypePrepaidGiveaway[];
 };
 
 export type ApiMyBoost = {
@@ -169,6 +265,7 @@ export type ApiBoost = {
   expires: number;
   isFromGiveaway?: boolean;
   isGift?: boolean;
+  stars?: number;
 };
 
 export type ApiGiveawayInfoActive = {
@@ -186,10 +283,11 @@ export type ApiGiveawayInfoResults = {
   isWinner?: true;
   isRefunded?: true;
   startDate: number;
+  starsPrize?: number;
   finishDate: number;
   giftCodeSlug?: string;
   winnersCount: number;
-  activatedCount: number;
+  activatedCount?: number;
 };
 
 export type ApiGiveawayInfo = ApiGiveawayInfoActive | ApiGiveawayInfoResults;
@@ -203,13 +301,6 @@ export type ApiCheckedGiftCode = {
   months: number;
   usedAt?: number;
 };
-
-export interface ApiPrepaidGiveaway {
-  id: string;
-  months: number;
-  quantity: number;
-  date: number;
-}
 
 export interface ApiStarsTransactionPeerUnsupported {
   type: 'unsupported';
@@ -250,18 +341,35 @@ export type ApiStarsTransactionPeer =
 | ApiStarsTransactionPeerPeer;
 
 export interface ApiStarsTransaction {
-  id: string;
+  id?: string;
   peer: ApiStarsTransactionPeer;
   messageId?: number;
   stars: number;
   isRefund?: true;
+  isGift?: true;
+  starGift?: ApiStarGift;
+  giveawayPostId?: number;
+  isMyGift?: true; // Used only for outgoing star gift messages
+  isReaction?: true;
   hasFailed?: true;
   isPending?: true;
   date: number;
   title?: string;
   description?: string;
   photo?: ApiWebDocument;
-  extendedMedia?: MediaContent[];
+  extendedMedia?: BoughtPaidMedia[];
+  subscriptionPeriod?: number;
+}
+
+export interface ApiStarsSubscription {
+  id: string;
+  peerId: string;
+  until: number;
+  pricing: ApiStarsSubscriptionPricing;
+  isCancelled?: true;
+  canRefulfill?: true;
+  hasMissingBalance?: true;
+  chatInviteHash?: string;
 }
 
 export interface ApiStarTopupOption {
@@ -269,4 +377,20 @@ export interface ApiStarTopupOption {
   stars: number;
   currency: string;
   amount: number;
+}
+
+export interface ApiStarsGiveawayWinnerOption {
+  isDefault?: true;
+  users: number;
+  perUserStars: number;
+}
+
+export interface ApiStarGiveawayOption {
+  isExtended?: true;
+  isDefault?: true;
+  stars: number;
+  yearlyBoosts: number;
+  currency: string;
+  amount: number;
+  winners: ApiStarsGiveawayWinnerOption[];
 }

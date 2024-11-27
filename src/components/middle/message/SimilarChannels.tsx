@@ -51,7 +51,7 @@ const SimilarChannels = ({
   isCurrentUserPremium,
 }: StateProps & OwnProps) => {
   const lang = useOldLang();
-  const { toggleChannelRecommendations } = getActions();
+  const { toggleChannelRecommendations, loadChannelRecommendations } = getActions();
   const [isShowing, markShowing, markNotShowing] = useFlag(false);
   const [isHiding, markHiding, markNotHiding] = useFlag(false);
   // eslint-disable-next-line no-null/no-null
@@ -68,6 +68,7 @@ const SimilarChannels = ({
   const [shoulRenderSkeleton, setShoulRenderSkeleton] = useState(!similarChannelIds);
   const firstSimilarChannels = useMemo(() => similarChannels?.slice(0, SHOW_CHANNELS_NUMBER), [similarChannels]);
   const areSimilarChannelsPresent = Boolean(firstSimilarChannels?.length);
+
   useHorizontalScroll(ref, !areSimilarChannelsPresent || !shouldShowInChat || shoulRenderSkeleton, true);
   const isAnimating = isHiding || isShowing;
   const shouldRenderChannels = Boolean(
@@ -75,6 +76,12 @@ const SimilarChannels = ({
       && (shouldShowInChat || isAnimating)
       && areSimilarChannelsPresent,
   );
+
+  useEffect(() => {
+    if (!similarChannelIds) {
+      loadChannelRecommendations({ chatId });
+    }
+  }, [chatId, similarChannelIds]);
 
   useTimeout(() => setShoulRenderSkeleton(false), MAX_SKELETON_DELAY);
 

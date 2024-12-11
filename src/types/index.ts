@@ -9,14 +9,17 @@ import type {
   ApiChatInviteImporter,
   ApiDocument,
   ApiExportedInvite,
-  ApiLanguage,
+  ApiFakeType,
+  ApiLabeledPrice,
   ApiMessage,
   ApiPhoto,
   ApiReaction,
+  ApiReactionWithPaid,
   ApiStickerSet,
   ApiUser,
   ApiVideo,
 } from '../api/types';
+import type { SearchResultKey } from '../util/keys/searchResultKey';
 import type { IconName } from './icons';
 
 export type TextPart = TeactNode;
@@ -53,7 +56,7 @@ export type PerformanceTypeKey = (
   'pageTransitions' | 'messageSendingAnimations' | 'mediaViewerAnimations'
   | 'messageComposerAnimations' | 'contextMenuAnimations' | 'contextMenuBlur' | 'rightColumnAnimations'
   | 'animatedEmoji' | 'loopAnimatedStickers' | 'reactionEffects' | 'stickerEffects' | 'autoplayGifs' | 'autoplayVideos'
-  | 'storyRibbonAnimations'
+  | 'storyRibbonAnimations' | 'snapEffect'
 );
 export type PerformanceType = {
   [key in PerformanceTypeKey]: boolean;
@@ -109,8 +112,7 @@ export interface ISettings extends NotifySettings, Record<string, any> {
   shouldSuggestCustomEmoji: boolean;
   shouldUpdateStickerSetOrder: boolean;
   hasPassword?: boolean;
-  languages?: ApiLanguage[];
-  language: LangCode;
+  language: string;
   isSensitiveEnabled?: boolean;
   canChangeSensitive?: boolean;
   timeFormat: TimeFormat;
@@ -124,12 +126,12 @@ export interface ISettings extends NotifySettings, Record<string, any> {
   translationLanguage?: string;
   doNotTranslate: string[];
   canDisplayChatInTitle: boolean;
-  shouldShowLoginCodeInChatList?: boolean;
   shouldForceHttpTransport?: boolean;
   shouldAllowHttpTransport?: boolean;
   shouldCollectDebugLogs?: boolean;
   shouldDebugExportedSenders?: boolean;
   shouldWarnAboutSvg?: boolean;
+  shouldSkipWebAppCloseConfirmation: boolean;
 }
 
 export interface ApiPrivacySettings {
@@ -161,25 +163,7 @@ export interface ShippingOption {
   id: string;
   title: string;
   amount: number;
-  prices: Price[];
-}
-
-export interface Price {
-  label: string;
-  amount: number;
-}
-
-export interface ApiInvoiceContainer {
-  isTest?: boolean;
-  isNameRequested?: boolean;
-  isPhoneRequested?: boolean;
-  isEmailRequested?: boolean;
-  isShippingAddressRequested?: boolean;
-  isFlexible?: boolean;
-  shouldSendPhoneToProvider?: boolean;
-  shouldSendEmailToProvider?: boolean;
-  currency?: string;
-  prices?: Price[];
+  prices: ApiLabeledPrice[];
 }
 
 export enum SettingsScreens {
@@ -273,7 +257,7 @@ export enum SettingsScreens {
 export type StickerSetOrReactionsSetOrRecent = Pick<ApiStickerSet, (
   'id' | 'accessHash' | 'title' | 'count' | 'stickers' | 'isEmoji' | 'installedDate' | 'isArchived' |
   'hasThumbnail' | 'hasStaticThumb' | 'hasAnimatedThumb' | 'hasVideoThumb' | 'thumbCustomEmojiId'
-)> & { reactions?: ApiReaction[] };
+)> & { reactions?: ApiReactionWithPaid[] };
 
 export enum LeftColumnContent {
   ChatList,
@@ -290,6 +274,7 @@ export enum LeftColumnContent {
 export enum GlobalSearchContent {
   ChatList,
   ChannelList,
+  BotApps,
   Media,
   Links,
   Files,
@@ -299,7 +284,6 @@ export enum GlobalSearchContent {
 
 export enum RightColumnContent {
   ChatInfo,
-  Search,
   Management,
   Statistics,
   BoostStatistics,
@@ -311,6 +295,7 @@ export enum RightColumnContent {
   AddingMembers,
   CreateTopic,
   EditTopic,
+  MonetizationStatistics,
 }
 
 export type MediaViewerMedia = ApiPhoto | ApiVideo | ApiDocument;
@@ -327,6 +312,8 @@ export enum MediaViewerOrigin {
   SearchResult,
   SuggestedAvatar,
   StarsTransaction,
+  PreviewMedia,
+  SponsoredMessage,
 }
 
 export enum StoryViewerOrigin {
@@ -390,6 +377,7 @@ export type ProfileTabType =
   | 'members'
   | 'commonChats'
   | 'media'
+  | 'previewMedia'
   | 'documents'
   | 'links'
   | 'audio'
@@ -397,8 +385,27 @@ export type ProfileTabType =
   | 'stories'
   | 'storiesArchive'
   | 'similarChannels'
-  | 'dialogs';
+  | 'dialogs'
+  | 'gifts';
 export type SharedMediaType = 'media' | 'documents' | 'links' | 'audio' | 'voice';
+export type MiddleSearchType = 'chat' | 'myChats' | 'channels';
+export type MiddleSearchParams = {
+  requestedQuery?: string;
+  savedTag?: ApiReaction;
+  isHashtag?: boolean;
+  fetchingQuery?: string;
+  type: MiddleSearchType;
+  results?: MiddleSearchResults;
+};
+export type MiddleSearchResults = {
+  query: string;
+  totalCount?: number;
+  nextOffsetId?: number;
+  nextOffsetPeerId?: string;
+  nextOffsetRate?: number;
+  foundIds?: SearchResultKey[];
+};
+
 export type ApiPrivacyKey = 'phoneNumber' | 'addByPhone' | 'lastSeen' | 'profilePhoto' | 'voiceMessages' |
 'forwards' | 'chatInvite' | 'phoneCall' | 'phoneP2P' | 'bio' | 'birthday';
 export type PrivacyVisibility = 'everybody' | 'contacts' | 'closeFriends' | 'nonContacts' | 'nobody';
@@ -473,8 +480,8 @@ export type NotifyException = {
 
 export type EmojiKeywords = {
   isLoading?: boolean;
-  version: number;
-  keywords: Record<string, string[]>;
+  version?: number;
+  keywords?: Record<string, string[]>;
 };
 
 export type InlineBotSettings = {
@@ -491,18 +498,27 @@ export type InlineBotSettings = {
 };
 
 export type CustomPeerType = 'premium' | 'toBeDistributed' | 'contacts' | 'nonContacts'
-| 'groups' | 'channels' | 'bots' | 'excludeMuted' | 'excludeArchived' | 'excludeRead';
+| 'groups' | 'channels' | 'bots' | 'excludeMuted' | 'excludeArchived' | 'excludeRead' | 'stars';
 
-export interface CustomPeer {
+export type CustomPeer = {
   isCustomPeer: true;
-  titleKey: string;
+  key?: string | number;
   subtitleKey?: string;
-  avatarIcon: IconName;
+  avatarIcon?: IconName;
   isAvatarSquare?: boolean;
   peerColorId?: number;
+  isVerified?: boolean;
+  fakeType?: ApiFakeType;
+  customPeerAvatarColor?: string;
   withPremiumGradient?: boolean;
-}
+} & ({
+  titleKey: string;
+  title?: undefined;
+} | {
+  title: string;
+  titleKey?: undefined;
+});
 
-export interface UniqueCustomPeer extends CustomPeer {
-  type: CustomPeerType;
-}
+export type UniqueCustomPeer<T = CustomPeerType> = CustomPeer & {
+  type: T;
+};

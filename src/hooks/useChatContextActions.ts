@@ -44,11 +44,14 @@ const useChatContextActions = ({
 }, isInSearch = false) => {
   const lang = useOldLang();
 
+  /* <-- NREACH CODE START --> */
   const chatIdToCRMEidMap = JSON.parse(localStorage.getItem('crmMapper') || '{}');
+  /* <-- NREACH CODE END --> */
 
   const { isSelf } = user || {};
   const isServiceNotifications = user?.id === SERVICE_NOTIFICATIONS_USER_ID;
 
+  /* <-- NREACH CODE START --> */
   const handleAddToCRM = useCallback(() => {
     let message = {};
 
@@ -64,6 +67,7 @@ const useChatContextActions = ({
     const message = { type: 'openInCRM', eid };
     window.parent.postMessage(message, '*');
   }, []);
+  /* <-- NREACH CODE END--> */
 
   const deleteTitle = useMemo(() => {
     if (!chat) return undefined;
@@ -101,7 +105,9 @@ const useChatContextActions = ({
       openChatInNewTab,
     } = getActions();
 
+    /* <-- NREACH CODE START --> */
     const contactEid = chatIdToCRMEidMap[chat.id]?.eid;
+    /* <-- NREACH CODE END --> */
 
     const actionOpenInNewTab = IS_OPEN_IN_NEW_TAB_SUPPORTED && {
       title: IS_ELECTRON ? 'Open in new window' : 'Open in new tab',
@@ -115,6 +121,7 @@ const useChatContextActions = ({
       },
     };
 
+    /* <-- NREACH CODE START --> */
     const crmAction = contactEid ? {
       title: 'Open In CRM',
       icon: 'link-badge',
@@ -124,6 +131,7 @@ const useChatContextActions = ({
       icon: 'add-user',
       handler: handleAddToCRM,
     };
+    /* <-- NREACH CODE END --> */
 
     const togglePinned = () => {
       if (isSavedDialog) {
@@ -189,7 +197,7 @@ const useChatContextActions = ({
       ? { title: lang('Unarchive'), icon: 'unarchive', handler: () => toggleChatArchived({ id: chat.id }) }
       : { title: lang('Archive'), icon: 'archive', handler: () => toggleChatArchived({ id: chat.id }) };
 
-    const canReport = handleReport && (isChatChannel(chat) || isChatGroup(chat) || (user && !user.isSelf));
+    const canReport = handleReport && !user && (isChatChannel(chat) || isChatGroup(chat));
     const actionReport = canReport
       ? { title: lang('ReportPeer.Report'), icon: 'flag', handler: handleReport }
       : undefined;
@@ -211,7 +219,7 @@ const useChatContextActions = ({
   }, [
     chat, user, canChangeFolder, lang, handleChatFolderChange, isPinned, isInSearch, isMuted, currentUserId,
     handleDelete, handleMute, handleReport, folderId, isSelf, isServiceNotifications, isSavedDialog, deleteTitle,
-    isPreview,chatIdToCRMEidMap, handleAddToCRM, handleOpenInCRM,
+    isPreview, chatIdToCRMEidMap, handleAddToCRM, handleOpenInCRM,
   ]);
 };
 

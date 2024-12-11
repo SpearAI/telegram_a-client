@@ -9,10 +9,11 @@ import { FocusDirection } from '../../../types';
 
 import {
   ANIMATION_END_DELAY,
-  FAST_SMOOTH_MAX_DURATION,
   RELEASE_DATETIME,
+  SCROLL_MAX_DURATION,
   SERVICE_NOTIFICATIONS_USER_ID,
 } from '../../../config';
+import { cancelScrollBlockingAnimation, isAnimatingScroll } from '../../../util/animateScroll';
 import { copyHtmlToClipboard } from '../../../util/clipboard';
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
 import { compact, findLast } from '../../../util/iteratees';
@@ -28,6 +29,7 @@ import {
   getMediaFormat,
   getMediaHash,
   getMessageDownloadableMedia,
+  getMessageStatefulContent,
   getSenderTitle,
   isChatChannel,
   isJoinedChannelMessage,
@@ -48,7 +50,7 @@ import {
 } from '../../reducers';
 import { updateTabState } from '../../reducers/tabs';
 import {
-  selectAllowedMessageActions,
+  selectAllowedMessageActionsSlow,
   selectChat,
   selectChatLastMessageId,
   selectChatMessages,
@@ -73,7 +75,7 @@ import {
 import { getIsMobile } from '../../../hooks/useAppLayout';
 
 const FOCUS_DURATION = 1500;
-const FOCUS_NO_HIGHLIGHT_DURATION = FAST_SMOOTH_MAX_DURATION + ANIMATION_END_DELAY;
+const FOCUS_NO_HIGHLIGHT_DURATION = SCROLL_MAX_DURATION + ANIMATION_END_DELAY;
 const POLL_RESULT_OPEN_DELAY_MS = 450;
 const VERSION_NOTIFICATION_DURATION = 1000 * 60 * 60 * 24 * 3; // 3 days
 const SERVICE_NOTIFICATIONS_MAX_AMOUNT = 1e3;
@@ -127,7 +129,7 @@ addActionHandler('editLastMessage', (global, actions, payload): ActionReturnType
   }
 
   const lastOwnEditableMessageId = findLast(viewportIds, (id) => {
-    return Boolean(chatMessages[id] && selectAllowedMessageActions(global, chatMessages[id], threadId).canEdit);
+    return Boolean(chatMessages[id] && selectAllowedMessageActionsSlow(global, chatMessages[id], threadId).canEdit);
   });
 
   if (!lastOwnEditableMessageId) {
@@ -489,6 +491,10 @@ addActionHandler('focusMessage', (global, actions, payload): ActionReturnType =>
     global = updateFocusDirection(global, direction, tabId);
   }
 
+  if (isAnimatingScroll()) {
+    cancelScrollBlockingAnimation();
+  }
+
   setGlobal(global, { forceOnHeavyAnimation: true });
 
   actions.openThread({
@@ -515,6 +521,20 @@ addActionHandler('setShouldPreventComposerAnimation', (global, actions, payload)
   }, tabId);
 });
 
+addActionHandler('openReplyMenu', (global, actions, payload): ActionReturnType => {
+  const {
+    fromChatId, messageId, quoteText, tabId = getCurrentTabId(),
+  } = payload;
+  return updateTabState(global, {
+    replyingMessage: {
+      fromChatId,
+      messageId,
+      quoteText,
+    },
+    isShareMessageModalShown: true,
+  }, tabId);
+});
+
 addActionHandler('openForwardMenu', (global, actions, payload): ActionReturnType => {
   const {
     fromChatId, messageIds, storyId, groupedId, withMyScore, tabId = getCurrentTabId(),
@@ -528,9 +548,9 @@ addActionHandler('openForwardMenu', (global, actions, payload): ActionReturnType
       fromChatId,
       messageIds: groupedMessageIds || messageIds,
       storyId,
-      isModalShown: true,
       withMyScore,
     },
+    isShareMessageModalShown: true,
   }, tabId);
 });
 
@@ -540,10 +560,10 @@ addActionHandler('changeRecipient', (global, actions, payload): ActionReturnType
     forwardMessages: {
       ...selectTabState(global, tabId).forwardMessages,
       toChatId: undefined,
-      isModalShown: true,
       noAuthors: false,
       noCaptions: false,
     },
+    isShareMessageModalShown: true,
   }, tabId);
 });
 
@@ -575,7 +595,9 @@ addActionHandler('exitForwardMode', (global, actions, payload): ActionReturnType
   const { tabId = getCurrentTabId() } = payload || {};
 
   global = updateTabState(global, {
+    isShareMessageModalShown: false,
     forwardMessages: {},
+    replyingMessage: {},
   }, tabId);
   setGlobal(global);
 });
@@ -611,7 +633,7 @@ addActionHandler('cancelMediaHashDownloads', (global, actions, payload): ActionR
 });
 
 addActionHandler('downloadMedia', (global, actions, payload): ActionReturnType => {
-  const { media, tabId = getCurrentTabId() } = payload;
+  const { media, originMessage, tabId = getCurrentTabId() } = payload;
 
   const hash = getMediaHash(media, 'download');
   if (!hash) return undefined;
@@ -621,6 +643,8 @@ addActionHandler('downloadMedia', (global, actions, payload): ActionReturnType =
     size,
     format: getMediaFormat(media, 'download'),
     filename: getMediaFilename(media),
+    originChatId: originMessage?.chatId,
+    originMessageId: originMessage?.id,
   } satisfies ActiveDownloads[string];
 
   return addActiveMediaDownload(global, hash, metadata, tabId);
@@ -639,11 +663,11 @@ addActionHandler('downloadSelectedMessages', (global, actions, payload): ActionR
   const chatMessages = selectChatMessages(global, chatId);
   if (!chatMessages || !threadId) return;
   const messages = messageIds.map((id) => chatMessages[id])
-    .filter((message) => selectAllowedMessageActions(global, message, threadId).canDownload);
+    .filter((message) => selectAllowedMessageActionsSlow(global, message, threadId).canDownload);
   messages.forEach((message) => {
     const media = getMessageDownloadableMedia(message);
     if (!media) return;
-    actions.downloadMedia({ media, tabId });
+    actions.downloadMedia({ media, originMessage: message, tabId });
   });
 });
 
@@ -905,6 +929,13 @@ addActionHandler('closeReportAdModal', (global, actions, payload): ActionReturnT
   }, tabId);
 });
 
+addActionHandler('closeReportModal', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId() } = payload || {};
+  return updateTabState(global, {
+    reportModal: undefined,
+  }, tabId);
+});
+
 addActionHandler('openPreviousReportAdModal', (global, actions, payload): ActionReturnType => {
   const { tabId = getCurrentTabId() } = payload || {};
   const reportAdModal = selectTabState(global, tabId).reportAdModal;
@@ -925,6 +956,40 @@ addActionHandler('openPreviousReportAdModal', (global, actions, payload): Action
   }, tabId);
 });
 
+addActionHandler('openPreviousReportModal', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId() } = payload || {};
+  const reportModal = selectTabState(global, tabId).reportModal;
+  if (!reportModal) {
+    return undefined;
+  }
+
+  if (reportModal.sections.length === 1) {
+    actions.closeReportModal({ tabId });
+    return undefined;
+  }
+
+  return updateTabState(global, {
+    reportModal: {
+      ...reportModal,
+      sections: reportModal.sections.slice(0, -1),
+    },
+  }, tabId);
+});
+
+addActionHandler('openPaidReactionModal', (global, actions, payload): ActionReturnType => {
+  const { chatId, messageId, tabId = getCurrentTabId() } = payload;
+  return updateTabState(global, {
+    paidReactionModal: { chatId, messageId },
+  }, tabId);
+});
+
+addActionHandler('closePaidReactionModal', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId() } = payload || {};
+  return updateTabState(global, {
+    paidReactionModal: undefined,
+  }, tabId);
+});
+
 function copyTextForMessages(global: GlobalState, chatId: string, messageIds: number[]) {
   const { type: messageListType, threadId } = selectCurrentMessageList(global) || {};
   const lang = langProvider.oldTranslate;
@@ -939,7 +1004,7 @@ function copyTextForMessages(global: GlobalState, chatId: string, messageIds: nu
 
   const messages = messageIds
     .map((id) => chatMessages[id])
-    .filter((message) => selectAllowedMessageActions(global, message, threadId).canCopy)
+    .filter((message) => selectAllowedMessageActionsSlow(global, message, threadId).canCopy)
     .sort((message1, message2) => message1.id - message2.id);
 
   const resultHtml: string[] = [];
@@ -948,13 +1013,40 @@ function copyTextForMessages(global: GlobalState, chatId: string, messageIds: nu
   messages.forEach((message) => {
     const sender = isChatChannel(chat) ? chat : selectSender(global, message);
     const senderTitle = `> ${sender ? getSenderTitle(lang, sender) : message.forwardInfo?.hiddenUserName || ''}:`;
+    const statefulContent = getMessageStatefulContent(global, message);
 
     resultHtml.push(senderTitle);
     resultHtml.push(`${renderMessageSummaryHtml(lang, message)}\n`);
 
     resultText.push(senderTitle);
-    resultText.push(`${getMessageSummaryText(lang, message, false, 0, true)}\n`);
+    resultText.push(`${getMessageSummaryText(lang, message, statefulContent, false, 0, true)}\n`);
   });
 
   copyHtmlToClipboard(resultHtml.join('\n'), resultText.join('\n'));
 }
+
+addActionHandler('openDeleteMessageModal', (global, actions, payload): ActionReturnType => {
+  const {
+    message, isSchedule, album,
+    tabId = getCurrentTabId(),
+  } = payload;
+
+  global = getGlobal();
+
+  global = updateTabState(global, {
+    deleteMessageModal: {
+      isSchedule,
+      album,
+      message,
+    },
+  }, tabId);
+  setGlobal(global);
+});
+
+addActionHandler('closeDeleteMessageModal', (global, actions, payload): ActionReturnType => {
+  const { tabId = getCurrentTabId() } = payload || {};
+
+  return updateTabState(global, {
+    deleteMessageModal: undefined,
+  }, tabId);
+});

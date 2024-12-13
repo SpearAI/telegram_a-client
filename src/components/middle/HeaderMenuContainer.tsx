@@ -213,6 +213,11 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
   const [shouldRenderMuteModal, markRenderMuteModal, unmarkRenderMuteModal] = useFlag();
   const { x, y } = anchor;
 
+  /* <-- NREACH CODE START --> */
+  const chatIdToCRMEidMap = JSON.parse(localStorage.getItem('crmMapper') || '{}');
+  const chatEid = chatIdToCRMEidMap[chatId]?.eid;
+  /* <-- NREACH CODE START --> */
+
   useShowTransitionDeprecated(isOpen, onCloseAnimationEnd, undefined, false);
   const isViewGroupInfoShown = usePrevDuringAnimation(
     (!isChatInfoShown && isForum) ? true : undefined, CLOSE_MENU_ANIMATION_DURATION,
@@ -292,6 +297,18 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
     setViewForumAsMessages({ chatId, isEnabled: false });
     closeMenu();
   });
+
+  /* <-- NREACH CODE START --> */
+  const handleAddToCRM = useLastCallback(() => {
+    const message = { type: 'addChatToCRM', chat: JSON.stringify(chat) };
+    window.parent.postMessage(message, '*');
+  });
+
+  const handleOpenInCRM = useLastCallback(() => {
+    const message = { type: 'openInCRM', eid: chatEid };
+    window.parent.postMessage(message, '*');
+  });
+  /* <-- NREACH CODE END --> */
 
   const handleEnterVoiceChatClick = useLastCallback(() => {
     if (canCreateVoiceChat) {
@@ -469,6 +486,23 @@ const HeaderMenuContainer: FC<OwnProps & StateProps> = ({
           onClose={closeMenu}
           shouldCloseFast={shouldCloseFast}
         >
+          {/* <-- NREACH CODE START --> */}
+          {chatEid ? (
+            <MenuItem
+              icon="link-badge"
+              onClick={handleOpenInCRM}
+            >
+              Open In CRM
+            </MenuItem>
+          ) : (
+            <MenuItem
+              icon="add-user"
+              onClick={handleAddToCRM}
+            >
+              Add To CRM
+            </MenuItem>
+          )}
+          { /* <-- NREACH CODE END --> */}
           {isMobile && canSearch && (
             <MenuItem
               icon="search"

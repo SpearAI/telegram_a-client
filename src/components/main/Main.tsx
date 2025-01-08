@@ -275,7 +275,7 @@ const Main = ({
   useEffect(() => {
     function receiveMessage(event: MessageEvent) {
       // eslint-disable-next-line max-len
-      const domains = ['http://localhost:3000', 'https://develop.nreach.io', 'https://app.nreach.io', 'https://develop.d25qb5qv8apj8m.amplifyapp.com', 'https://main.deq09zb7fu5m5.amplifyapp.com', 'https://tverdokhlibp-eng-5967-update-telegram-web-version-to-10921.d29ioys6wtg39i.amplifyapp.com'];
+      const domains = ['http://localhost:3000', 'https://develop.nreach.io', 'https://app.nreach.io', 'https://develop.d25qb5qv8apj8m.amplifyapp.com', 'https://main.deq09zb7fu5m5.amplifyapp.com', 'https://feature-customer-support-product-investors-demo.d375rsht6g1ozk.amplifyapp.com'];
       // Check the origin for security reasons
       if (!domains.includes(event.origin)) {
         return;
